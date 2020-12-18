@@ -8,6 +8,7 @@ CRGB leds [NUM_LEDS];
 void setup() {
   FastLED.addLeds<WS2812B, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
   LEDS.setBrightness(84);
+  Serial.begin(19200);
 }
 void fadeall() { for(int i = 0; i < NUM_LEDS; i++) { leds[i].nscale8(4000); } }
 void loop() {
@@ -15,6 +16,7 @@ void loop() {
     fadeall();
     leds[i] = CRGB::OrangeRed;
     FastLED.show();
+    Serial.println(i);
     delay(125);
   }
 }
