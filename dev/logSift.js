@@ -30,7 +30,7 @@ Object.keys(s).forEach(id => {
 		})
 		a[i] = na
 	})
-	console.log(s[id)
+	console.log(s[id])
 	console.log(idSum)
 })
 //console.log(s)
