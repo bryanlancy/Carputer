@@ -23,7 +23,7 @@ function sortLogFolder(folder) {
 							summary[id].data.entries++
 							summary[id].data[entry] = 1
 						}
-						summary[id].avgLeng = (summary[id].avgLeng + len) / 2
+						summary[id].avgLen = (summary[id].avgLen + len) / 2
 						summary[id].count++
 					} else {
 						let label
@@ -90,7 +90,7 @@ function sortLogFolder(folder) {
 							id: id,
 							label: label,
 							count: 0,
-							avgLeng: len,
+							avgLen: len,
 							data: {
 								entries: 0,
 								[entry]: 0,
@@ -109,6 +109,9 @@ function sortLogFolder(folder) {
 const sum = sortLogFolder('./CANSniffer/CANLogs/')
 
 for (const key in sum) {
-	if (sum[key].label === 'Unknown Code') console.log(key)
-	if (sum[key].label.indexOf('Not Decoded') >= 0) console.log(sum[key].label)
+	const code = sum[key]
+	if (code.label === 'Unknown Code') console.log(key)
+	if (code.label.indexOf('Not Decoded') >= 0) console.log(code.label)
+	console.log(code.id, code.avgLen)
 }
+console.log(sum[153])
