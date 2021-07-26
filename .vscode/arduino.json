@@ -1,6 +1,0 @@
-{
-	"board": "arduino:avr:uno",
-	"sketch": "LEDSwitch\\LEDSwitch.ino",
-	"port": "COM3",
-	"output": "../ArduinoOutput"
-}
