@@ -20,7 +20,6 @@ export default function LEDControl() {
 		socket.emit('LED_UPDATE', { main, sub }, data => {
 			console.log(data)
 		})
-		// return () => socket.disconnect()
 	}
 
 	return (
