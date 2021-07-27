@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import socketIOClient from 'socket.io-client'
 
 import './LEDControl.css'
@@ -6,19 +6,12 @@ import './LEDControl.css'
 export default function LEDControl() {
 	const [res, setRes] = useState('')
 	const ENDPOINT = 'http://localhost:5000'
-	const socket = socketIOClient(ENDPOINT, { transports: ['websocket'] })
-
-	useEffect(() => {
-		socket.on('FromAPI', data => {
-			setRes(data)
-		})
-		return () => socket.disconnect()
-	}, [])
 
 	function updateLEDPattern(main, sub) {
-		console.log({ main, sub })
+		const socket = socketIOClient(ENDPOINT, { transports: ['websocket'] })
 		socket.emit('LED_UPDATE', { main, sub }, data => {
 			console.log(data)
+			socket.disconnect()
 		})
 	}
 

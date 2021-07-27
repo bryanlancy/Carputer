@@ -1,4 +1,15 @@
 const SerialPort = require('serialport')
+//! Temp, may not work with multiple serial streams
+let serial
+SerialPort.list().then(ports => {
+	console.log('ports: ', ports)
+	ports.forEach(function (port) {
+		const check = port.manufacturer.includes('Arduino')
+		if (check) {
+			console.log(port.path)
+		}
+	})
+})
 // const serial = new SerialPort('/dev/tty-usbserial1')
 
 const express = require('express')
@@ -30,6 +41,7 @@ io.on('connection', socket => {
 	socket.on('LED_UPDATE', (data, cb) => {
 		console.log('Update LED')
 		console.log(data)
+
 		cb('UPDATE LED')
 	})
 })
