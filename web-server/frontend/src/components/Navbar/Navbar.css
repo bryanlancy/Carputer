@@ -1,0 +1,21 @@
+.navbar {
+	display: grid;
+	align-items: center;
+	justify-items: center;
+	grid-auto-flow: column;
+
+	width: 100%;
+	height: var(--height-navbar);
+
+	background-color: #303030;
+}
+.navbar a {
+	padding: 5%;
+
+	border: 1px solid white;
+	border-radius: 8px;
+
+	color: white;
+	text-decoration: none;
+	text-align: center;
+}
