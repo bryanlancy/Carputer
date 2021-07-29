@@ -1,4 +1,7 @@
 .navbar {
+	position: fixed;
+	bottom: 0;
+
 	display: grid;
 	align-items: center;
 	justify-items: center;
@@ -6,9 +9,12 @@
 
 	width: 100%;
 	height: var(--height-navbar);
+	min-height: 50px;
 
 	border-top: 1px solid var(--themeColorAccentsLight);
-	background: linear-gradient(to bottom, #00000000, var(--themeColorSecondary));
+
+	background: linear-gradient(to bottom, var(--themeColor), var(--themeColorSecondary));
+	z-index: 10;
 }
 .navbar a {
 	padding: 8px;

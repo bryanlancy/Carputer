@@ -1,4 +1,4 @@
-import './Tile.css'
+import './TileLED.css'
 
 export default function Tile({ props, className }) {
     const { img, clickEvents, title, desc, font, options } = props
@@ -14,12 +14,12 @@ export default function Tile({ props, className }) {
 
 
     return (
-        <div onClick={tileClick} className={`tile ${className}`}>
+        <div onClick={tileClick} className={`tile-led ${className}`}>
             <img src={img} alt={title} />
-            <div className="tile__body" style={{ fontFamily, fontSize }}>
+            <div className="tile-led__body" style={{ fontFamily, fontSize }}>
                 <h3 style={{ fontFamily: fontTitle?.fontFamily, fontSize: fontTitle?.fontSize }}>{title}</h3>
                 <p style={{ fontFamily: fontDesc?.fontFamily, fontSize: fontDesc?.fontSize }}>{desc}</p>
-                <div className="tile__buttons">
+                <div className="tile-led__buttons">
                     {desc && <button onClick={infoClick}><i className="fas fa-info-circle"></i></button>}
                     {settingsClick && options && <button onClick={e => settingsClick(e, options)}><i className="fal fa-sliders-v"></i></button>}
                 </div>

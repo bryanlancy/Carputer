@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import socketIOClient from 'socket.io-client'
 
-import Tile from './Tile'
+import Tile from '../../tiles/LED'
 
 import './LEDControls.css'
 
@@ -66,7 +66,7 @@ export default function LEDControlsPage() {
 		{
 			key: "rpm",
 			title: 'Rpms',
-			img: `${require('../../../images/icons/rpms.jpg').default}`,
+			img: `${require('../../../assets/images/icons/rpms.jpg').default}`,
 			options: {
 				colors: [
 					<label>Color 1 <input type="color"></input></label>,
@@ -92,7 +92,7 @@ export default function LEDControlsPage() {
 		{
 			key: "kitt",
 			title: 'Kitt',
-			img: `${require('../../../images/icons/kitt.jpg').default}`,
+			img: `${require('../../../assets/images/icons/kitt.jpg').default}`,
 			clickEvents: {
 				tile: () => updateLEDPattern('main', 'kitt'),
 				settings: defaultSettingsClick
@@ -106,7 +106,7 @@ export default function LEDControlsPage() {
 		{
 			key: "turnSignal",
 			title: 'Turn Signal',
-			img: `${require('../../../images/icons/turn-signal.jpeg').default}`,
+			img: `${require('../../../assets/images/icons/turn-signal.jpeg').default}`,
 			clickEvents: {
 				tile: () => updateLEDPattern('main', 'turnSignal'),
 				settings: defaultSettingsClick

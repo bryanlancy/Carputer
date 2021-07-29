@@ -19,7 +19,7 @@ i {
 }
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+	font-family: 'Gruppo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
 #root {
@@ -30,8 +30,10 @@ body {
 .App,
 #root,
 html {
-	background: var(--themeColor);
+	background: linear-gradient(#00000088, #1b1b1b77);
+	/* background: #00000022; */
 	min-height: 325px;
+	overflow: hidden;
 }
 
 .App,
@@ -42,7 +44,6 @@ html {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	/* overflow: hidden; */
 }
 .page__title {
 	width: 100%;

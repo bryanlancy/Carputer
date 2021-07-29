@@ -1,4 +1,4 @@
-.tile {
+.tile-led {
 	position: relative;
 
 	height: 100%;
@@ -11,18 +11,18 @@
 
 	transition: all 0.5s ease-in-out;
 }
-.tile.selected {
+.tile-led.selected {
 	box-shadow: 0 0 16px 4px var(--themeColorSelected);
 }
-.tile:hover {
+.tile-led:hover {
 	cursor: pointer;
 }
-.tile img {
+.tile-led img {
 	height: 75%;
 	width: 100%;
 	object-fit: cover;
 }
-.tile__body {
+.tile-led__body {
 	position: absolute;
 	bottom: 0;
 
@@ -39,34 +39,34 @@
 
 	background: linear-gradient(to top, #000 65%, #00000000);
 }
-.tile__body h3 {
+.tile-led__body h3 {
 	--border: 1px solid var(--themeColorAccents);
 	border-top: var(--border);
 	border-bottom: var(--border);
 }
-.tile__body p {
+.tile-led__body p {
 	margin-top: 16px;
 	font-size: 18px;
 }
-.tile__buttons {
+.tile-led__buttons {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 
 	margin: 8px 0;
 }
-.tile__buttons i {
+.tile-led__buttons i {
 	font-size: 20px;
 }
-.tile__buttons :not(:first-child) {
+.tile-led__buttons :not(:first-child) {
 	margin-left: 12px;
 }
-.tile__buttons button {
+.tile-led__buttons button {
 	background: none;
 	outline: none;
 	border: none;
 }
-.tile__buttons button:hover {
+.tile-led__buttons button:hover {
 	cursor: pointer;
 	filter: brightness(0.8);
 }
