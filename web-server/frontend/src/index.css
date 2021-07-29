@@ -3,8 +3,19 @@
 	padding: 0;
 	box-sizing: border-box;
 
-	--height-main: 80vh;
-	--height-navbar: 20vh;
+	--height-main: 85vh;
+	--height-navbar: 15vh;
+
+	--themeColor: #1b1b1b;
+	--themeColorSecondary: #000;
+	--themeColorAccents: #ffffff;
+	--themeColorAccentsLight: #ffffff22;
+	--themeColorSelected: #fff;
+
+	--fontColor: #fff;
+}
+i {
+	color: var(--fontColor);
 }
 
 body {
@@ -13,9 +24,32 @@ body {
 
 #root {
 	height: var(--height-main);
+	color: var(--fontColor);
+}
+
+.App,
+#root,
+html {
+	background: var(--themeColor);
+	min-height: 325px;
 }
 
 .App,
 .page {
 	height: 100%;
+}
+.page {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	/* overflow: hidden; */
+}
+.page__title {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+
+	padding: 8px;
 }

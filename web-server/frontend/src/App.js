@@ -2,7 +2,9 @@ import { Switch, Route } from 'react-router-dom'
 
 import Navbar from './components/Navbar'
 import MainDisplay from './components/MainDisplay'
-import LEDControl from './components/LEDControl'
+
+import { LEDControlsPage, TelemetryPage, ToolsPage } from './components/pages'
+
 
 function App() {
 	return (
@@ -12,7 +14,13 @@ function App() {
 					<MainDisplay />
 				</Route>
 				<Route path="/led_control">
-					<LEDControl />
+					<LEDControlsPage />
+				</Route>
+				<Route path="/telemetry">
+					<TelemetryPage />
+				</Route>
+				<Route path="/tools">
+					<ToolsPage />
 				</Route>
 			</Switch>
 			<Navbar />

@@ -1,8 +1,8 @@
 //Baud rate: 57600
-
 #define FASTLED_INTERNAL
 #include <FastLED.h>
-#include <SerialCommands.h>
+
+#define INPUT_SIZE 30
 
 #define NUM_LEDS 10 //Make dynamic with setup from master device
 #define COLOR_ORDER GRB
@@ -10,15 +10,12 @@
 CRGB leds[NUM_LEDS]; // Define the array of leds
 CRGB colorBlank = CRGB(0, 0, 0);
 
-char serial_command_buffer_[32];
-SerialCommands serial_commands_(&Serial, serial_command_buffer_, sizeof(serial_command_buffer_), "\r\n", " ");
+//LED Pattern Variables
+char patternMain = 'b'; //Main pattern choice: a=Rev,
+char patternSub = 'c';  //Sub pattern choice
 
 int kittDirection = 0; // Direction of lights, 0 or 1
 int kittCounter = 0;   // Current spot in in strip of leds
-
-int testCount = 0;
-char patternMain = 'a'; //Main pattern choice: a=Rev,
-char patternSub = 'c';  //Sub pattern choice
 
 //---LED Functions
 void resetAll() //Set all lets to black(nothing)
@@ -39,72 +36,10 @@ void fadeAll() //Gradually fade all light
 
 //---Serial Functions
 
-//Template for command w/ args
-void cmd_WithArgs(SerialCommands *sender)
+//! TESTING
+int testCount = 0;
+void generateFakeRPMs()
 {
-  char *arg = sender->Next();
-  if (arg == NULL)
-  {
-    sender->GetSerial()->println("ERROR No Arguments");
-    return;
-  }
-  sender->GetSerial()->println(arg);
-  while ((arg = sender->Next()) != NULL)
-  {
-    sender->GetSerial()->println(arg);
-    sender->GetSerial()->println("TEST from arduino!");
-  }
-};
-//default command, command not found
-void cmd_unrecognized(SerialCommands *sender, const char *cmd)
-{
-  sender->GetSerial()->print("ERROR: Unrecognized command [");
-  sender->GetSerial()->print(cmd);
-  sender->GetSerial()->println("]");
-};
-//Set Main Pattern command
-void cmd_setPatternMain(SerialCommands *sender)
-{
-  char *arg = sender->Next();
-  if (arg == NULL)
-  {
-    sender->GetSerial()->println("ERROR No Arguments");
-    return;
-  }
-  patternMain = arg[0];
-  sender->GetSerial()->println(arg);
-};
-void cmd_setPatternSub(SerialCommands *sender)
-{
-  char *arg = sender->Next();
-  if (arg == NULL)
-  {
-    sender->GetSerial()->println("ERROR No Arguments");
-    return;
-  }
-
-  patternSub = arg[0];
-  sender->GetSerial()->println(arg);
-};
-
-SerialCommand cmd_setPatternMain_("patternMain", cmd_setPatternMain);
-SerialCommand cmd_setPatternSub_("patternSub", cmd_setPatternSub);
-
-void setup()
-{
-  LEDS.setBrightness(25);
-  FastLED.addLeds<WS2812B, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS); //FastLED setup
-
-  Serial.begin(57600);                                   // Serial communication to receive commands to change pattern
-  serial_commands_.SetDefaultHandler(&cmd_unrecognized); //Set LED Brightness, make dynamic with setup from master device
-  serial_commands_.AddCommand(&cmd_setPatternMain_);
-  serial_commands_.AddCommand(&cmd_setPatternSub_);
-}
-
-void loop()
-{
-
-  //! TESTING TESTING TESTING TESTING TESTING TESTING
   if (testCount == 0)
   {
     testCount += 1;
@@ -124,9 +59,63 @@ void loop()
       testCount -= 1;
     }
   }
+}
+
+void setup()
+{
+  LEDS.setBrightness(25);                                          //Set LED Brightness, make dynamic with setup from master device
+  FastLED.addLeds<WS2812B, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS); //FastLED setup
+
+  Serial.begin(57600); // Serial communication to receive commands to change pattern
+}
+
+void receiveSerial()
+{
+  if (Serial.available() > 0)
+  {
+    char input[INPUT_SIZE + 1];
+    byte size = Serial.readBytes(input, INPUT_SIZE);
+    input[size] = 0;
+
+    char *command = strtok(input, "&");
+    while (command != 0)
+    {
+      char *value = strchr(command, '=');
+      if (value != 0)
+      {
+        *value = 0;
+        ++value;
+        char arg = command[0];
+        char val = value[0];
+        switch (arg)
+        {
+        case 'a':
+          patternMain = val;
+          Serial.println("{\"status\": 200}");
+          break;
+
+        case 'b':
+          patternSub = val;
+          Serial.println("{\"status\": 200}");
+          break;
+
+        default:
+          Serial.println("{\"status\": 500}");
+          break;
+        }
+      }
+      command = strtok(0, "&");
+    }
+  }
+}
+
+void loop()
+{
+
+  //! TESTING TESTING TESTING TESTING TESTING TESTING
+  generateFakeRPMs();
   //! TESTING TESTING TESTING TESTING TESTING TESTING
 
-  serial_commands_.ReadSerial();
   // float TESTInputRevs = random(0, NUM_LEDS); //! REPLACE WITH REV READING
 
   switch (patternMain)
@@ -146,11 +135,11 @@ void loop()
       CRGB revColor3 = CRGB(255, 150, 0);
       float cutOff3 = .8;
       CRGB revColor4 = CRGB(255, 0, 0);
-      CRGB revColorCustom = CRGB(255, 0, 255);
+      CRGB revColorCustom = CRGB(255, 255, 255);
 
       switch (patternSub)
       {
-      case 'a':
+      case 'a': //Fill - SingleColor
         if (i < numToLight)
         {
 
@@ -161,7 +150,7 @@ void loop()
           leds[i] = colorBlank;
         }
         break;
-      case 'b': // Fill - Color Change
+      case 'b': // Fill - ColorChange
         if (i < numToLight)
         {
           if (perc < cutOff1)
@@ -186,7 +175,7 @@ void loop()
           leds[i] = colorBlank; //Reset unused LEDs
         }
         break;
-      case 'c': // Fill - Multi-Color
+      case 'c': // Fill - MultiColor
         if (i < numToLight)
         {
           if (stripProgress < cutOff1)
@@ -211,17 +200,17 @@ void loop()
           leds[i] = colorBlank; //Reset unused LEDs
         }
         break;
-      case NULL:
+      case 'z':
         delay(250);
         break;
       default:
         resetAll();
-        patternSub = NULL;
+        patternSub = 'z';
         break;
       }
     }
     FastLED.show();
-    delay(300);
+    delay(250);
     break;
   }
   case 'b': // Turn Signal Patterns
@@ -246,12 +235,20 @@ void loop()
     delay(115);
     break;
   }
-  case NULL:
-    delay(250);
-    break;
+
   default:
     resetAll();
-    patternMain = NULL;
+    patternMain = 'z';
     break;
   }
+
+  receiveSerial();
+
+  // Serial.print("{");
+  // String keyNumLED = "\"numLed\": ";
+  // Serial.print(keyNumLED + NUM_LEDS);
+  // Serial.print(",");
+  // String keyLEDOnCount = "\"testCount\": ";
+  // Serial.print(keyLEDOnCount + testCount);
+  // Serial.println("}");
 }
