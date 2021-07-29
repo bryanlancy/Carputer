@@ -69,8 +69,6 @@ function setupSockets(server) {
 		})
 
 		//REQUIRES SERIAL COMMUNICATION
-		const Readline = SerialPort.parsers.Readline
-		const parser = serial.pipe(new Readline())
 		socket.on('LED_UPDATE', (data, cb) => {
 			let { type, value } = data
 			if (serial) {
@@ -111,7 +109,6 @@ function setupSockets(server) {
 					default:
 						break;
 				}
-
 				const command = `${type}=${value}`
 				serial.write(command);
 				socket.emit('LED_UPDATE')
