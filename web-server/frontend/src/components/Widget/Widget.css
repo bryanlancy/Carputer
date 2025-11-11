@@ -1,8 +1,0 @@
-.widget {
-	display: flex;
-	justify-content: center;
-	width: 100%;
-}
-.widget__header {
-	display: flex;
-}
