@@ -1,0 +1,3 @@
+# Default configuration for the Carputer hub placeholder.
+ipc_dir = "/var/run/carputer"
+log_path = "/var/log/carputer-hub.log"
