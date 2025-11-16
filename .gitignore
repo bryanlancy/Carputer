@@ -36,3 +36,6 @@ yarn-error.log*
 jsconfig.json
 
 assets/videos
+fleet-cc-server/*/.env
+fleet-cc-server/backend/.env
+fleet-cc-server/frontend/.env
