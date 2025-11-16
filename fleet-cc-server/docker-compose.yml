@@ -1,0 +1,176 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fleet-cc-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fleet_cc}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fleet-network
+
+  # Supabase Studio
+  studio:
+    image: supabase/studio:latest
+    container_name: fleet-cc-studio
+    ports:
+      - "8080:8080"
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-http://localhost:8000}
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-fleet_cc}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta:
+        condition: service_started
+    networks:
+      - fleet-network
+
+  # Supabase Meta (for migrations and schema management)
+  meta:
+    image: supabase/postgres-meta:latest
+    container_name: fleet-cc-meta
+    ports:
+      - "8081:8080"
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: postgres
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB:-fleet_cc}
+      PG_META_DB_USER: ${POSTGRES_USER:-postgres}
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fleet-network
+
+  # Supabase Auth (self-hosted auth service)
+  auth:
+    image: supabase/gotrue:latest
+    container_name: fleet-cc-auth
+    ports:
+      - "9999:9999"
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-fleet_cc}
+      GOTRUE_SITE_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      GOTRUE_URI_ALLOW_LIST: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      GOTRUE_DISABLE_SIGNUP: false
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fleet-network
+
+  # Supabase Realtime
+  realtime:
+    image: supabase/realtime:latest
+    container_name: fleet-cc-realtime
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-fleet_cc}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      SECURE_CHANNELS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fleet-network
+
+  # API Server (Node.js backend)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fleet-cc-api
+    env_file:
+      - ./backend/.env
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-fleet_cc}
+      SUPABASE_URL: ${SUPABASE_URL:-http://localhost:8000}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      SESSION_SECRET: ${SESSION_SECRET:-your-super-secret-session-token}
+      RSYNC_TARGET_PATH: ${RSYNC_TARGET_PATH:-/var/fleet-data}
+      HQ_WIFI_SSID: ${HQ_WIFI_SSID:-HQNetwork}
+      DEVICE_REGISTRATION_TOKEN: ${DEVICE_REGISTRATION_TOKEN:-}
+    volumes:
+      - ./backend:/app
+      - /var/fleet-data:/var/fleet-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      realtime:
+        condition: service_started
+    networks:
+      - fleet-network
+    command: npm run dev
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fleet-cc-frontend
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    networks:
+      - fleet-network
+    command: npm run dev
+
+volumes:
+  postgres_data:
+
+networks:
+  fleet-network:
+    driver: bridge
+
