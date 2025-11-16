@@ -1,0 +1,21 @@
+#!/bin/sh
+# Custom rcS wrapper for Carputer – keep boot quiet on the primary console.
+
+# Redirect everything that follows to the kernel log only.
+exec >/dev/null 2>&1
+
+for script in /etc/init.d/S??* ; do
+    [ -f "$script" ] || continue
+    case "$script" in
+        *.sh)
+            (
+                trap - INT QUIT TSTP
+                set start
+                . "$script"
+            )
+            ;;
+        *)
+            "$script" start
+            ;;
+    esac
+done

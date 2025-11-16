@@ -1,0 +1,62 @@
+#!/bin/sh
+
+set -eu
+
+LOG_FILE="/var/log/carputer-update.log"
+FLAG_DIR="/var/lib/carputer"
+FORCE_FLAG="${FLAG_DIR}/force-update"
+STATE_FILE="${FLAG_DIR}/last-update"
+HOOK_DIR="/usr/lib/carputer/update.d"
+STATUS_DIR="/var/run/carputer"
+STATUS_FILE="${STATUS_DIR}/update-status"
+
+log() {
+  local ts
+  ts="$(date -Iseconds)"
+  printf '[carputer-update] %s %s\n' "${ts}" "$*" | tee -a "${LOG_FILE}"
+}
+
+consume_flag=0
+if [ "${1:-}" = "--consume-flag" ]; then
+  consume_flag=1
+  shift
+fi
+
+mkdir -p "${FLAG_DIR}" "$(dirname "${LOG_FILE}")"
+touch "${LOG_FILE}"
+mkdir -p "${STATUS_DIR}"
+
+cleanup_status() {
+  rm -f "${STATUS_FILE}"
+}
+
+cleanup_status
+printf 'Applying system update…\n' > "${STATUS_FILE}"
+
+log "Starting update run (consume_flag=${consume_flag})"
+
+if [ -d "${HOOK_DIR}" ]; then
+  for hook in "${HOOK_DIR}"/*; do
+    if [ -x "${hook}" ] && [ ! -d "${hook}" ]; then
+      log "Running hook $(basename "${hook}")"
+      if ! "${hook}"; then
+        log "Hook $(basename "${hook}") failed"
+        exit 1
+      fi
+    fi
+  done
+else
+  log "No hook directory at ${HOOK_DIR}; skipping hook execution"
+fi
+
+date -Iseconds > "${STATE_FILE}"
+
+if [ "${consume_flag}" -eq 1 ] && [ -f "${FORCE_FLAG}" ]; then
+  rm -f "${FORCE_FLAG}"
+  log "Consumed force-update flag"
+fi
+
+cleanup_status
+log "Update run completed"
+
+

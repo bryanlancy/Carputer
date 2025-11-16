@@ -1,0 +1,17 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    if [ -x /usr/sbin/carputer-update ]; then
+      if [ -f /var/lib/carputer/force-update ]; then
+        /usr/sbin/carputer-update --consume-flag
+      fi
+    fi
+    ;;
+  *)
+    ;;
+esac
+
+exit 0
+
+

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Prepare runtime directories for Carputer services.
+# TODO(carputer): see docs/todos/boot-splash-launch.md
+
+IPC_DIR="/var/run/carputer"
+DATA_DIR="/home/carputer/.local/share/carputer"
+RUNTIME_DIR="/run/user/$(id -u carputer)"
+
+case "$1" in
+  start)
+    mkdir -p "$IPC_DIR"
+    mkdir -p "$DATA_DIR/logs" "$DATA_DIR/ipc"
+    mkdir -p "$RUNTIME_DIR"
+    chmod 775 "$IPC_DIR"
+    chmod 0755 "$DATA_DIR" "$DATA_DIR/logs" "$DATA_DIR/ipc"
+    chmod 0700 "$RUNTIME_DIR"
+    chown carputer:carputer "$IPC_DIR"
+    chown carputer:carputer /home/carputer
+    chown -R carputer:carputer "$DATA_DIR"
+    chown carputer:carputer "$RUNTIME_DIR"
+    ;;
+  stop|restart)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

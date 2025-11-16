@@ -1,0 +1,4 @@
+Place executable hook scripts in this directory to extend the carputer-update
+workflow. Hooks run in lexical order and should be idempotent.
+
+
