@@ -7,9 +7,9 @@ This document captures the steps, options, and rationale for building a fast-boo
 ## 1. Project Goals
 - Boot the Raspberry Pi into the Carputer hub app as quickly as possible.
 - Support HDMI display with an animated boot video, touchscreen input (if present), and USB HID devices.
-- Expose CAN bus, I²C, SPI, UART, and GPIO for attached sensors and co-processor boards (e.g., Arduino CAN decoder).
-- Provide network connectivity (Ethernet, Wi-Fi, Bluetooth) for updates and telemetry.
-- Host a modular app platform where the hub process can load and communicate with “applets” (LED controller, settings, media, etc.).
+- Provide flexible connectivity (Ethernet, Wi-Fi, Bluetooth, USB, GPIO, CAN adapters, serial bridges) so external modules can integrate quickly.
+- Host a modular app platform where the hub process can load and communicate with “applets” (LED controller, settings, media, CAN bridge, etc.).
+- Keep the hub’s own responsibilities focused on orchestration and communications plumbing; delegate protocol-specific logic (e.g., CAN decoding) to applets or companion devices.
 
 Keep these in mind when choosing Buildroot options—anything not required for these outcomes is a candidate for removal to reduce boot time.
 
@@ -95,7 +95,7 @@ Key settings to adjust in `menuconfig`:
 
 - `Target packages → Graphic libraries and applications → Enable EGL/GLES/Vulkan stack` (`BR2_PACKAGE_RPI_USERLAND`) for accelerated video playback.
 - `Target packages → Audio and video applications → mpv` for boot video playback. Enable dependencies (FFmpeg with Raspberry Pi hardware acceleration).
-- `Target packages → Hardware handling → can-utils`, `python-can`, `i2c-tools`, `spi-tools`.
+- `Target packages → Hardware handling → i2c-tools`, `spi-tools`, `python3` with relevant serial/GPIO libs. Add `can-utils` or `python-can` only if an applet requires it.
 - `Target packages → Networking applications` → add `connman` or `network-manager` for flexible connectivity, or keep `busybox` `udhcpcd` for minimal setups.
 - `System configuration → Init system` → stay with BusyBox init for lowest boot time. Configure `BR2_INIT_NONE` with a custom `/etc/inittab` or use a single `carputer-start` script.
 - `Filesystem and Flash` → enable `ext4` root filesystem image. Optionally add `squashfs` + `overlayfs` for read-only root with persistence in `/data`.
@@ -163,6 +163,7 @@ Ensure GPU memory split is set in `board/carputer/config.txt` (e.g., `gpu_mem=12
   1. Launches boot video
   2. Starts `carputer-hub` binary (your app)
   3. Waits for hub readiness, then terminates the video player
+  4. Exposes common IPC endpoints (Unix sockets, DBus names, REST port, etc.) so specialized applets can register themselves and handle protocols like CAN.
 - Keep the script idempotent so it can be restarted manually for debugging.
 
 ---
@@ -213,6 +214,35 @@ Enable the corresponding Buildroot packages and make sure they start with the hu
 
 ## 11. Building the Image
 
+### 11.1 Recommended: helper script
+
+Use the repository script to keep Buildroot invocations consistent and incremental:
+
+```sh
+/home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh defconfig
+/home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh build
+```
+
+Common commands:
+- `buildroot-build.sh build` — runs the full build, auto-applying the defconfig if `.config` is missing.
+- `buildroot-build.sh menuconfig` — opens `make menuconfig` using the existing output directory.
+- `buildroot-build.sh linux-menuconfig` — opens the kernel `menuconfig`.
+- `buildroot-build.sh deploy` — rsyncs `buildroot/output/target/` into your NFS export (set `CARPUTER_NFS_TARGET=/srv/nfs/carputer-rootfs` or pass `--deploy-target`).
+- `buildroot-build.sh clean-output` — removes `buildroot/output/` (only when you explicitly confirm; keep incremental builds whenever possible).
+- All `make` invocations stream into timestamped log files under `/home/bryanb/Documents/Programming/Carputer/logs/buildroot`. Successful runs delete their log automatically unless you pass `--debug`, which keeps the file for post-mortem review.
+- After a successful `build`, the script verifies that `output/images/sdcard.img` was freshly regenerated; it warns and fails if the image is missing or its timestamp did not change.
+
+Override defaults when needed:
+
+```sh
+/home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh --defconfig raspberrypi4_64_defconfig build
+/home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh --output /tmp/br-out --jobs 8 build
+```
+
+The script always runs builds from `/home/bryanb/Documents/Programming/Carputer/buildroot`, passes `O=<output>` to keep incremental artifacts, and refuses to remove downloads.
+
+### 11.2 Manual commands
+
 ```sh
 cd /Users/bryanburns/Documents/Programming/Carputer/buildroot
 make carputer_defconfig
@@ -237,7 +267,86 @@ Alternatively use Raspberry Pi Imager, pointing it at the generated `.img`.
 
 ---
 
-## 12. Testing & Iteration
+## 12. NFS Root & Incremental Deployment
+
+### 12.1 Why use NFS root
+- Flash the SD card once, then leave `/boot` alone—rootfs lives on your development machine.
+- Every Buildroot rebuild is immediately available; the Pi simply reboots and mounts the updated tree.
+- Works great with Qt modules: tweak QML/C++ locally, rebuild, reboot, and see the result.
+
+### 12.2 Host export
+1. Install the NFS server once (Ubuntu example):
+   ```sh
+   sudo apt install nfs-kernel-server
+   sudo mkdir -p /srv/nfs/carputer-rootfs
+   ```
+2. Export the directory (append to `/etc/exports`):
+   ```
+   /srv/nfs/carputer-rootfs 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+   ```
+3. Reload exports and open the firewall if needed:
+   ```sh
+   sudo exportfs -ra
+   sudo ufw allow nfs
+   ```
+4. Keep the export in sync with the latest Buildroot rootfs:
+   ```sh
+   CARPUTER_NFS_TARGET=/srv/nfs/carputer-rootfs \
+     /home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh deploy
+   ```
+   The `deploy` command runs `rsync -a --delete --numeric-ids` from `buildroot/output/target/` into the export (pass `--deploy-rsync-opts "--info=name0,progress2"` if you want more output).
+   Add `--force-update` when the new rootfs requires an on-device restart of services; this drops a `var/lib/carputer/force-update` marker so the Pi runs its update hook automatically during the next boot.
+
+### 12.3 Buildroot & kernel settings
+- Kernel (`make linux-menuconfig`):
+  - `General setup → Initial RAM filesystem and RAM disk → Initramfs source file`: leave empty.
+  - `File systems → Network File Systems → NFS client support`.
+  - Build in the NIC driver you use at boot (e.g., `CONFIG_BROADCOM_GENET=y` for Pi 4).
+  - `Networking support → IP: kernel level autoconfiguration → DHCP`.
+- Buildroot (`make menuconfig`):
+  - Keep `BR2_ROOTFS_OVERLAY` pointing to `board/carputer/rootfs-overlay` (works with NFS too).
+  - Set `BR2_TARGET_ROOTFS_TAR=y` if you also want a tarball (`output/images/rootfs.tar`).
+  - Optional: disable `BR2_TARGET_ROOTFS_EXT2` once you rely solely on NFS.
+
+### 12.4 Raspberry Pi boot configuration
+- Leave the Pi boot partition on the SD card; replace `/boot/cmdline.txt` with something like:
+  ```
+  console=serial0,115200 console=tty1 root=/dev/nfs rw ip=dhcp \
+  nfsroot=192.168.1.10:/srv/nfs/carputer-rootfs,v3,tcp rootwait elevator=noop
+  ```
+  Replace `192.168.1.10` with your build host’s IP. `rootwait` is harmless; keep it if USB boot is involved.
+- Ensure `/boot/config.txt` matches your Buildroot-generated firmware (copy from `output/images/rpi-firmware/` when needed).
+- Keep a static SSH key in the overlay (`board/carputer/rootfs-overlay/root/.ssh/authorized_keys`) so you can manage the Pi even if DHCP assigns a new lease.
+
+### 12.5 Workflow summary
+- Build: `/home/bryanb/Documents/Programming/Carputer/scripts/buildroot-build.sh build`
+- Sync rootfs export: either rerun `buildroot-build.sh deploy` (optionally with `--force-update`) or set `CARPUTER_NFS_TARGET` and run `deploy` automatically in CI.
+- Reboot the Pi (`ssh carputer sudo reboot`)—no reflashing or SD card swaps. If you used `--force-update`, `/usr/sbin/carputer-update` will run during boot and clear the marker once hooks finish.
+- For Qt-only tweaks, rebuild just the relevant package, deploy, reboot, and test.
+- Extend the on-device update flow by dropping executable hooks in `/usr/lib/carputer/update.d`. They run in lexical order whenever `carputer-update` triggers.
+
+### 12.6 Wi-Fi credentials via `.env`
+1. Copy `env.example` to `.env` (gitignored) and set:
+   ```
+   CARPUTER_WIFI_SSID="HeadquartersNet"
+   CARPUTER_WIFI_PSK="super-secret-passphrase"
+   CARPUTER_HOST_IP="192.168.1.10"
+   CARPUTER_DEVICE_NAME="carputer-headunit"
+   CARPUTER_SSH_PUBLIC_KEY="ssh-ed25519 AAAA..."
+   CARPUTER_USE_NFS=0
+   CARPUTER_ENABLE_UI=1
+   ```
+1. Each `buildroot-build.sh build` run reads `.env`, generates `board/carputer/generated/wifi/wpa_supplicant.conf`, `board/carputer/generated/boot/cmdline.txt`, `board/carputer/generated/etc/hostname`, and (optionally) `board/carputer/generated/ssh/authorized_keys`, then installs them into the image so the Pi knows which Wi-Fi to join, which rootfs source to use (SD vs. NFS), which hostname to publish (`carputer-headunit.local` via mDNS), and which SSH trust model to use.
+1. Leave `CARPUTER_SSH_PUBLIC_KEY` empty to keep the default `carputer` / `carputer` credentials available. If you supply a key, password logins are disabled and the key is written into `/home/carputer/.ssh/authorized_keys` during the build.
+1. Set `CARPUTER_USE_NFS=0` while bringing up Wi-Fi; this emits an SD-root `cmdline.txt` so the Pi boots from its local partition even if networking fails. Flip it to `1` once Wi-Fi is rock solid; make sure `CARPUTER_HOST_IP` points at your NFS server or the kernel will hang waiting for the mount.
+1. Set `CARPUTER_ENABLE_UI=0` temporarily to skip launching the Qt UI and drop straight into a `carputer` shell on `tty1`—handy while debugging Wi-Fi or display issues.
+1. Wi-Fi comes up on `wlan0` via DHCP using the generated `/etc/wpa_supplicant/wpa_supplicant.conf`, so make sure the SSID/PSK values are present; otherwise the interface will fail to associate.
+1. After flashing the SD card once, all subsequent deployments can ride over the network: update `.env` if credentials, host IP, device name, SSH key, UI flag, or NFS flag change, rebuild, `deploy --force-update`, and reboot devices.
+1. Avoid checking the `.env` file into version control—only the generated artifacts land in the build output.
+
+---
+
+## 13. Testing & Iteration
 
 - Keep a spare HDMI monitor attached for first boots; check `/var/log/messages` via serial console if boot fails.
 - Use `systemd-analyze` equivalent timings (or custom scripts) to profile boot time; disable services until you hit target (<5–10 seconds).
@@ -246,7 +355,7 @@ Alternatively use Raspberry Pi Imager, pointing it at the generated `.img`.
 
 ---
 
-## 13. Maintenance Checklist
+## 14. Maintenance Checklist
 
 - **After Buildroot upgrades**: rerun `make oldconfig`, revalidate kernel config, rebuild images.
 - **Before releases**: freeze package versions (pin git hashes), rebuild from scratch (`rm -rf output/`) to ensure reproducibility.
@@ -255,10 +364,10 @@ Alternatively use Raspberry Pi Imager, pointing it at the generated `.img`.
 
 ---
 
-## 14. Next Steps
+## 15. Next Steps
 - Implement `board/carputer/post-build.sh` to install boot video, configure splash service, and copy default configs.
 - Prototype the hub app as a Qt/QML or Electron application; determine runtime requirements and add them to the Buildroot package.
-- Design CAN data schema exposed by the Arduino bridge; define gRPC/DBus interfaces for applets.
+- Define IPC contracts (e.g., gRPC/DBus/ZeroMQ schemas) that let companion devices or applets plug in protocol handlers such as CAN decoding without modifying the hub.
 - Add automated GitHub Actions job that runs `make carputer_defconfig && make nconfig savedefconfig` to detect configuration drift.
 
 Keep this file updated as the system evolves. Document every new dependency or kernel tweak so rebuilding the image months later is painless.
