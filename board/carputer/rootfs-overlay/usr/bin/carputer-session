@@ -1,0 +1,116 @@
+#!/bin/sh
+
+# Wrapper launched from /etc/inittab to start the Carputer hub
+# as the unprivileged carputer user with a clean environment.
+
+# IMMEDIATE console output to verify script is running
+echo "CARPUTER-SESSION: Script starting..." > /dev/tty1 2>&1
+
+BOOT_DEV="/dev/mmcblk0p1"
+BOOT_MOUNT="/boot"
+SESSION_USER="carputer"
+SESSION_HOME="/home/${SESSION_USER}"
+SESSION_UID=$(id -u "${SESSION_USER}")
+DATA_DIR="${SESSION_HOME}/.local/share/carputer"
+LOG_DIR="${DATA_DIR}/logs"
+IPC_DIR="${DATA_DIR}/ipc"
+RUNTIME_DIR="/run/user/${SESSION_UID}"
+SESSION_LOG="${LOG_DIR}/session.log"
+BOOT_LOG="/boot/carputer-session.log"
+UI_BIN="/usr/bin/carputer-ui"
+FALLBACK_BIN="/usr/bin/carputer-hub"
+DISABLE_FLAG="/etc/carputer/ui.disabled"
+
+mkdir -p "${LOG_DIR}" "${IPC_DIR}" "${RUNTIME_DIR}"
+chown -R "${SESSION_USER}:${SESSION_USER}" "${DATA_DIR}" "${RUNTIME_DIR}" 2>/dev/null
+chmod 0755 "${DATA_DIR}" "${LOG_DIR}" "${IPC_DIR}" 2>/dev/null
+chmod 0700 "${RUNTIME_DIR}" 2>/dev/null
+
+# Try to mount boot partition (may fail if already mounted or device not available)
+if ! mountpoint -q "${BOOT_MOUNT}" 2>/dev/null; then
+    mkdir -p "${BOOT_MOUNT}" 2>/dev/null || true
+    mount -t vfat "${BOOT_DEV}" "${BOOT_MOUNT}" 2>/dev/null || true
+fi
+
+# Write initial boot info to log (but don't redirect yet)
+# Only write to boot log if boot partition is actually mounted
+if mountpoint -q "${BOOT_MOUNT}" 2>/dev/null && touch "${BOOT_LOG}" 2>/dev/null; then
+    chmod 0644 "${BOOT_LOG}" 2>/dev/null || true
+    ln -sf "${BOOT_LOG}" "${SESSION_LOG}" 2>/dev/null || true
+    SESSION_LOG="${BOOT_LOG}"
+    echo "[$(date -Iseconds)] carputer-session starting" >> "${SESSION_LOG}" 2>/dev/null || true
+fi
+
+# Only write dmesg if boot is mounted
+if mountpoint -q "${BOOT_MOUNT}" 2>/dev/null; then
+    dmesg > "${BOOT_MOUNT}/dmesg.log" 2>/dev/null || true
+fi
+
+# Check if UI is disabled BEFORE redirecting output
+echo "CARPUTER-SESSION: Checking UI disable flag..." > /dev/tty1 2>&1
+echo "CARPUTER-SESSION: DISABLE_FLAG=${DISABLE_FLAG}" > /dev/tty1 2>&1
+echo "CARPUTER-SESSION: Checking if file exists..." > /dev/tty1 2>&1
+if [ -f "${DISABLE_FLAG}" ]; then
+    echo "CARPUTER-SESSION: UI disable flag FOUND!" > /dev/tty1 2>&1
+    echo "[$(date -Iseconds)] UI disabled via ${DISABLE_FLAG}; starting shell instead" >> "${SESSION_LOG}" 2>/dev/null || true
+
+    # Print a visible message to confirm we're running
+    echo "CARPUTER-SESSION: UI disabled, launching shell..." > /dev/tty1 2>&1
+    printf '\033[2J\033[H' > /dev/tty1 2>&1  # Clear screen and move cursor to top
+    echo "==========================================" > /dev/tty1
+    echo "  Carputer Shell (UI Disabled)" > /dev/tty1
+    echo "==========================================" > /dev/tty1
+    echo "" > /dev/tty1
+
+    # Launch shell - inittab should have already set up stdin/stdout/stderr
+    if [ "$(id -u)" -eq 0 ]; then
+        if command -v su >/dev/null 2>&1; then
+            if su - "${SESSION_USER}" -c "true" >/dev/null 2>&1; then
+                exec su - "${SESSION_USER}"
+            fi
+        fi
+        export USER="${SESSION_USER}"
+        export LOGNAME="${SESSION_USER}"
+        export HOME="${SESSION_HOME}"
+        cd "${SESSION_HOME}" 2>/dev/null || cd /
+        exec /bin/sh -l
+    fi
+    exec /bin/sh -l
+fi
+
+# If we get here, UI is enabled
+echo "CARPUTER-SESSION: UI disable flag NOT found, UI should be enabled" > /dev/tty1 2>&1
+echo "CARPUTER-SESSION: DISABLE_FLAG path was: ${DISABLE_FLAG}" > /dev/tty1 2>&1
+ls -la /etc/carputer/ > /dev/tty1 2>&1 || echo "CARPUTER-SESSION: /etc/carputer/ does not exist!" > /dev/tty1 2>&1
+
+# UI is enabled - now redirect output to log
+exec >>"${SESSION_LOG}" 2>&1
+
+echo "[$(date -Iseconds)] carputer-session starting (UI mode)"
+
+# Clear the framebuffer to hide any preceding boot noise
+printf '\033c'
+
+if [ ! -x "${UI_BIN}" ]; then
+    echo "[$(date -Iseconds)] carputer-ui missing, falling back to carputer-hub"
+    if [ "$(id -u)" -eq 0 ]; then
+        exec su - "${SESSION_USER}" -c "${FALLBACK_BIN}"
+    else
+        exec "${FALLBACK_BIN}"
+    fi
+fi
+
+QT_ENV="XDG_RUNTIME_DIR=${RUNTIME_DIR} QT_QPA_PLATFORM=eglfs QT_LOGGING_RULES=\"*.debug=false;qt.qpa.*=false\" QT_QUICK_CONTROLS_STYLE=Basic"
+
+echo "[$(date -Iseconds)] launching carputer-ui"
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec su - "${SESSION_USER}" -c "${QT_ENV} ${UI_BIN}"
+else
+    export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+    export QT_QPA_PLATFORM="eglfs"
+    export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
+    export QT_QUICK_CONTROLS_STYLE="Basic"
+    exec "${UI_BIN}"
+fi
+
