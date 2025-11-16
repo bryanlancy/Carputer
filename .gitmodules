@@ -1,0 +1,3 @@
+[submodule "/home/bryanb/Documents/Programming/Carputer/buildroot"]
+	path = /home/bryanb/Documents/Programming/Carputer/buildroot
+	url = https://git.buildroot.net/buildroot
