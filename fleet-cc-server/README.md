@@ -46,6 +46,11 @@ make up
 # or
 make migrate
 
+# Seed database with test devices (optional)
+./dev.sh seed
+# or
+make seed
+
 # Access services:
 # - Dashboard: http://localhost:3000
 # - API: http://localhost:3001
@@ -134,6 +139,28 @@ For **self-hosted Supabase**, you need to generate the keys yourself. The `JWT_S
 - `SUPABASE_ANON_KEY` = same as `JWT_SECRET` (for client-side access)
 
 The `setup.sh` script will automatically create these files from the examples and generate secure secrets.
+
+## Test Data
+
+The database can be seeded with test devices for development and testing:
+
+```bash
+./dev.sh seed
+# or
+make seed
+```
+
+**Test devices are clearly labeled:**
+- Device IDs start with `TEST-` prefix (e.g., `TEST-001-ONLINE`)
+- Hostnames start with `TEST-` prefix (e.g., `TEST-carputer-alpha`)
+- VINs start with `TEST-VIN-` prefix
+
+**To remove all test devices:**
+```sql
+DELETE FROM devices WHERE device_id LIKE 'TEST-%';
+```
+
+The seed script creates a variety of test devices with different statuses (online, offline, stale) to test sorting and filtering functionality.
 
 ## Documentation
 

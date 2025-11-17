@@ -19,6 +19,7 @@ function print_usage() {
     echo "  restart   - Restart all services"
     echo "  logs      - Show logs from all services"
     echo "  migrate   - Run database migrations"
+    echo "  seed      - Seed database with test devices"
     echo "  backend   - Start backend in dev mode (outside Docker)"
     echo "  frontend  - Start frontend in dev mode (outside Docker)"
     echo "  clean     - Remove all containers and volumes"
@@ -60,6 +61,13 @@ function run_migrate() {
     echo -e "${GREEN}📊 Running database migrations...${NC}"
     docker-compose exec -T api npm run db:migrate
     echo -e "${GREEN}✅ Migrations complete${NC}"
+}
+
+function run_seed() {
+    check_docker
+    echo -e "${GREEN}🌱 Seeding database with test data...${NC}"
+    docker-compose exec -T api npm run db:seed
+    echo -e "${GREEN}✅ Seed complete${NC}"
 }
 
 function dev_backend() {
@@ -156,6 +164,9 @@ case "${1:-}" in
         ;;
     migrate)
         run_migrate
+        ;;
+    seed)
+        run_seed
         ;;
     backend)
         dev_backend

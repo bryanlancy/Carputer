@@ -21,6 +21,9 @@ logs: ## Show logs from all services
 migrate: ## Run database migrations
 	docker-compose exec api npm run db:migrate
 
+seed: ## Seed database with test devices
+	docker-compose exec api npm run db:seed
+
 clean: ## Remove all containers and volumes
 	docker-compose down -v
 	docker-compose rm -f
