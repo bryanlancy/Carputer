@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import './globals.scss'
+import styles from './layout.module.scss'
 
 export const metadata: Metadata = {
   title: 'Fleet Command & Control',
@@ -13,7 +15,24 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <nav className={styles.nav}>
+          <div className={styles.navContainer}>
+            <Link href="/" className={styles.navBrand}>
+              Fleet CC
+            </Link>
+            <div className={styles.navLinks}>
+              <Link href="/" className={styles.navLink}>
+                Dashboard
+              </Link>
+              <Link href="/devices" className={styles.navLink}>
+                Devices
+              </Link>
+            </div>
+          </div>
+        </nav>
+        {children}
+      </body>
     </html>
   )
 }
