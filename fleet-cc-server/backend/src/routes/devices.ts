@@ -119,9 +119,18 @@ router.post('/heartbeat', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
+
+    // Sort by status (online first), then by last_seen, then by device_id
     const result = await db.query(
       `SELECT * FROM devices
-       ORDER BY last_seen DESC NULLS LAST, created_at DESC`
+       ORDER BY
+         CASE status
+           WHEN 'online' THEN 1
+           WHEN 'offline' THEN 2
+           ELSE 3
+         END,
+         last_seen DESC NULLS LAST,
+         device_id ASC`
     );
 
     res.json(result.rows);
