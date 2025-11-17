@@ -62,6 +62,7 @@ export default function Home() {
             <div className={styles.metricValue}>
               {metrics?.devices.online || 0}
             </div>
+            <a href="/devices" className={styles.viewAllLink}>View All Devices →</a>
           </div>
 
           <div className={styles.metricCard}>
