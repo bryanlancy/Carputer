@@ -15,7 +15,7 @@ Design and implement a central web service that tracks Raspberry Pis running the
 2. **Select Tech Stack & Bootstrap Repo**
    - Frontend: Next.js with Node.js + TypeScript, SCSS modules for styling, and GSAP for animation.
    - Backend: Self-hosted Supabase deployment (PostgreSQL + Auth + Realtime) following Supabase self-hosting docs; wrap APIs in Node.js services packaged via Docker.
-   - Plan container orchestration (docker-compose initially) to run Supabase stack, API services, and Web UI together.
+   - Plan container orchestration (docker compose initially) to run Supabase stack, API services, and Web UI together.
    - Ensure WebSocket/Realtime channels are exposed via Supabase Realtime or complementary Node-based gateway for device telemetry.
    - Scaffold project structure, CI workflow, and container build/push pipeline.
 3. **Headquarters Wi-Fi Auto-Connect**

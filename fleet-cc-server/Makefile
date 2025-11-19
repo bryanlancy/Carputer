@@ -7,23 +7,23 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Build all Docker containers
-	docker-compose build
+	docker compose build
 
 up: ## Start all services
-	docker-compose up -d
+	docker compose up -d
 
 down: ## Stop all services
-	docker-compose down
+	docker compose down
 
 logs: ## Show logs from all services
-	docker-compose logs -f
+	docker compose logs -f
 
 migrate: ## Run database migrations
-	docker-compose exec api npm run db:migrate
+	docker compose exec api npm run db:migrate
 
 clean: ## Remove all containers and volumes
-	docker-compose down -v
-	docker-compose rm -f
+	docker compose down -v
+	docker compose rm -f
 
 dev-backend: ## Start backend in development mode
 	cd backend && npm install && npm run dev

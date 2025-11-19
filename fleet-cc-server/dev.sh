@@ -1,13 +1,95 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Development helper script for Fleet CC Server
 set -e
+
+# Detect operating system
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*)
+            echo "macos"
+            ;;
+        Linux*)
+            echo "linux"
+            ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo "windows"
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+OS=$(detect_os)
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Check if port is in use (cross-platform)
+check_port() {
+    local port=$1
+    case "$OS" in
+        macos|linux)
+            if command -v lsof &> /dev/null; then
+                lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1
+            elif command -v netstat &> /dev/null; then
+                netstat -an | grep -q ":$port.*LISTEN"
+            else
+                return 1
+            fi
+            ;;
+        windows)
+            if command -v netstat &> /dev/null; then
+                netstat -an | grep -q ":$port.*LISTEN"
+            else
+                return 1
+            fi
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Kill process on port (cross-platform)
+kill_port() {
+    local port=$1
+    case "$OS" in
+        macos|linux)
+            if command -v lsof &> /dev/null; then
+                lsof -ti:$port | xargs kill -9 2>/dev/null || true
+            elif command -v fuser &> /dev/null; then
+                fuser -k $port/tcp 2>/dev/null || true
+            fi
+            ;;
+        windows)
+            if command -v netstat &> /dev/null; then
+                # Windows: find PID and kill
+                for pid in $(netstat -ano | grep ":$port" | grep LISTENING | awk '{print $5}'); do
+                    taskkill //F //PID $pid 2>/dev/null || true
+                done
+            fi
+            ;;
+    esac
+}
+
+# Check if PostgreSQL is ready
+check_postgres() {
+    if command -v pg_isready &> /dev/null; then
+        pg_isready -h localhost -p 5432 >/dev/null 2>&1
+    else
+        # Fallback: try to connect via psql or docker
+        if command -v docker &> /dev/null; then
+            docker ps | grep -q postgres || docker compose ps | grep -q postgres
+        else
+            return 1
+        fi
+    fi
+}
 
 function print_usage() {
     echo "Usage: ./dev.sh [command]"
@@ -35,7 +117,7 @@ function check_docker() {
 function start_services() {
     check_docker
     echo -e "${GREEN}🚀 Starting all services...${NC}"
-    docker-compose up -d
+    docker compose up -d
     echo -e "${GREEN}✅ Services started${NC}"
     echo ""
     echo "Dashboard: http://localhost:3000"
@@ -46,19 +128,19 @@ function start_services() {
 function stop_services() {
     check_docker
     echo -e "${YELLOW}🛑 Stopping all services...${NC}"
-    docker-compose down
+    docker compose down
     echo -e "${GREEN}✅ Services stopped${NC}"
 }
 
 function show_logs() {
     check_docker
-    docker-compose logs -f
+    docker compose logs -f
 }
 
 function run_migrate() {
     check_docker
     echo -e "${GREEN}📊 Running database migrations...${NC}"
-    docker-compose exec -T api npm run db:migrate
+    docker compose exec -T api npm run db:migrate
     echo -e "${GREEN}✅ Migrations complete${NC}"
 }
 
@@ -66,12 +148,12 @@ function dev_backend() {
     echo -e "${GREEN}🔧 Starting backend in development mode...${NC}"
 
     # Check if port 3001 is already in use
-    if lsof -Pi :3001 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    if check_port 3001; then
         echo -e "${YELLOW}⚠️  Port 3001 is already in use${NC}"
-        read -q "?Kill the process? (y/N) " || REPLY=n
+        read -p "Kill the process? (y/N) " -n 1 -r
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            lsof -ti:3001 | xargs kill -9 2>/dev/null || true
+            kill_port 3001
             sleep 1
             echo -e "${GREEN}✓ Process killed${NC}"
         else
@@ -81,12 +163,12 @@ function dev_backend() {
     fi
 
     # Check if database is running
-    if ! pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+    if ! check_postgres; then
         echo -e "${YELLOW}⚠️  PostgreSQL is not running${NC}"
-        echo -e "${YELLOW}   Start it with: docker-compose up -d postgres${NC}"
+        echo -e "${YELLOW}   Start it with: docker compose up -d postgres${NC}"
         echo -e "${YELLOW}   Or run: ./dev.sh start${NC}"
         echo ""
-        read -q "?Continue anyway? (y/N) " || REPLY=n
+        read -p "Continue anyway? (y/N) " -n 1 -r
         echo ""
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Cancelled."
@@ -119,10 +201,11 @@ function dev_frontend() {
 function clean_all() {
     check_docker
     echo -e "${YELLOW}🧹 Cleaning up containers and volumes...${NC}"
-    read "?Are you sure? This will remove all data. (y/N) " -r
+    read -p "Are you sure? This will remove all data. (y/N) " -n 1 -r
+    echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker-compose down -v
-        docker-compose rm -f
+        docker compose down -v
+        docker compose rm -f
         echo -e "${GREEN}✅ Cleanup complete${NC}"
     else
         echo "Cancelled"
@@ -132,7 +215,7 @@ function clean_all() {
 function show_status() {
     check_docker
     echo -e "${GREEN}📊 Service Status:${NC}"
-    docker-compose ps
+    docker compose ps
 }
 
 # Main command handler

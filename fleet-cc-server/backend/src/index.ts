@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Pool } from 'pg';
 
 // Load environment variables
@@ -76,7 +76,7 @@ declare global {
   namespace Express {
     interface Request {
       db: Pool;
-      supabase: ReturnType<typeof createClient>;
+      supabase: SupabaseClient<any, 'public', any>;
     }
   }
 }

@@ -28,7 +28,7 @@ Central web service for managing the Carputer fleet, tracking device status, orc
 # Or manually:
 # 1. Copy .env.example to .env and configure
 # 2. Install dependencies: npm install (in backend/ and frontend/)
-# 3. Build Docker images: docker-compose build
+# 3. Build Docker images: docker compose build
 ```
 
 ### Development
@@ -57,7 +57,7 @@ make migrate
 ```bash
 # First, start PostgreSQL (via Docker or locally)
 # If using Docker Compose, start just postgres:
-docker-compose up -d postgres
+docker compose up -d postgres
 
 # Then start backend/frontend individually:
 ./dev.sh backend   # Start backend only (needs PostgreSQL)
@@ -66,7 +66,7 @@ docker-compose up -d postgres
 
 **Note:** When running backend/frontend outside Docker, you need:
 - PostgreSQL running (either via Docker or installed locally)
-- Database migrations run (`./dev.sh migrate` or `docker-compose exec api npm run db:migrate`)
+- Database migrations run (`./dev.sh migrate` or `docker compose exec api npm run db:migrate`)
 
 ### Other Commands
 
@@ -126,7 +126,7 @@ For **self-hosted Supabase**, you need to generate the keys yourself. The `JWT_S
 1. The `setup.sh` script generates `JWT_SECRET` automatically
 2. Set `SUPABASE_SERVICE_ROLE_KEY` in `backend/.env` to the same value as `JWT_SECRET`
 3. Set `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `frontend/.env` to the same value as `JWT_SECRET`
-4. Make sure `docker-compose.yml` uses the same `JWT_SECRET` for the `auth` and `realtime` services
+4. Make sure `docker compose.yml` uses the same `JWT_SECRET` for the `auth` and `realtime` services
 
 **Why?** In self-hosted Supabase:
 - `JWT_SECRET` is used by GoTrue (auth service) and Realtime to sign/verify tokens
