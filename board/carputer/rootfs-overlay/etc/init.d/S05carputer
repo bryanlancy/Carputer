@@ -15,7 +15,22 @@ case "$1" in
     chmod 0755 "$DATA_DIR" "$DATA_DIR/logs" "$DATA_DIR/ipc"
     chmod 0700 "$RUNTIME_DIR"
     chown carputer:carputer "$IPC_DIR"
+
+    # Fix home directory ownership and permissions (required for SSH StrictModes)
     chown carputer:carputer /home/carputer
+    chmod 755 /home/carputer
+
+    # Ensure .ssh directory exists with correct permissions
+    if [ -d /home/carputer/.ssh ]; then
+        chmod 700 /home/carputer/.ssh
+        chown carputer:carputer /home/carputer/.ssh
+        # Fix authorized_keys permissions if it exists
+        if [ -f /home/carputer/.ssh/authorized_keys ]; then
+            chmod 600 /home/carputer/.ssh/authorized_keys
+            chown carputer:carputer /home/carputer/.ssh/authorized_keys
+        fi
+    fi
+
     chown -R carputer:carputer "$DATA_DIR"
     chown carputer:carputer "$RUNTIME_DIR"
     ;;
