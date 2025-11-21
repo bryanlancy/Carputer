@@ -1,0 +1,196 @@
+#!/bin/sh
+# Network status debugging script for carputer
+
+echo "=== Network Interface Status ==="
+ip addr show
+echo ""
+echo "=== wlan0 Detailed Status ==="
+if ip link show wlan0 >/dev/null 2>&1; then
+    echo "wlan0 interface exists"
+    ip link show wlan0
+    echo ""
+    if ip addr show wlan0 | grep -q "state UP"; then
+        echo "wlan0 is UP"
+        IP_ADDR=$(ip addr show wlan0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+        if [ -n "${IP_ADDR}" ]; then
+            echo "IP address: ${IP_ADDR}"
+        else
+            echo "No IP address assigned (DHCP may not have completed)"
+        fi
+    else
+        echo "wlan0 is DOWN"
+        echo "Note: Use 'ifup wlan0' manually to bring up the interface"
+        echo "      (Skipping automatic ifup to avoid hanging)"
+    fi
+else
+    echo "wlan0 interface does NOT exist"
+    echo "Available interfaces:"
+    ip link show | grep -E "^[0-9]+:" | awk '{print $2}' | sed 's/:$//'
+fi
+echo ""
+
+echo "=== Network Routes ==="
+ip route show
+echo ""
+
+echo "=== wpa_supplicant Status ==="
+# Use BusyBox-compatible process checking (ps + grep instead of pgrep)
+WPA_PID=$(ps | grep "[w]pa_supplicant" | awk '{print $1}' | head -1)
+if [ -n "${WPA_PID}" ]; then
+    echo "wpa_supplicant is running (PID: ${WPA_PID})"
+    echo "Process details:"
+    ps | grep "[w]pa_supplicant" || true
+    echo ""
+    echo "wpa_cli status:"
+    # Skip wpa_cli if it might hang - user can run manually
+    echo "  (skipped - run 'wpa_cli -i wlan0 status' manually if needed)"
+else
+    echo "wpa_supplicant is NOT running"
+    echo "Attempting to check why..."
+    if [ -f /etc/wpa_supplicant.conf ]; then
+        if [ -r /etc/wpa_supplicant.conf ]; then
+            echo "  Config file exists and is readable"
+        else
+            echo "  Config file exists but is NOT readable (permissions: $(ls -l /etc/wpa_supplicant.conf | awk '{print $1}'))"
+        fi
+    else
+        echo "  Config file missing!"
+    fi
+    if [ -c /dev/wlan0 ] || ip link show wlan0 >/dev/null 2>&1; then
+        echo "  wlan0 interface exists"
+    else
+        echo "  wlan0 interface does not exist"
+    fi
+fi
+echo ""
+
+echo "=== Avahi Status ==="
+AVAHI_PID=$(ps | grep "[a]vahi-daemon" | awk '{print $1}' | head -1)
+if [ -n "${AVAHI_PID}" ]; then
+    echo "avahi-daemon is running (PID: ${AVAHI_PID})"
+    echo "avahi-browse:"
+    # Skip avahi-browse if it might hang - user can run manually
+    echo "  (skipped - run 'avahi-browse -a' manually if needed)"
+else
+    echo "avahi-daemon is NOT running"
+fi
+echo ""
+
+echo "=== DBus Status ==="
+DBUS_PID=$(ps | grep "[d]bus-daemon" | awk '{print $1}' | head -1)
+if [ -n "${DBUS_PID}" ]; then
+    echo "dbus-daemon is running (PID: ${DBUS_PID})"
+else
+    echo "dbus-daemon is NOT running"
+fi
+echo ""
+
+echo "=== Network Configuration Files ==="
+echo "/etc/network/interfaces:"
+cat /etc/network/interfaces 2>/dev/null || echo "  (file not found)"
+echo ""
+echo "/etc/network/interfaces.d/wlan0:"
+if [ -f /etc/network/interfaces.d/wlan0 ]; then
+    cat /etc/network/interfaces.d/wlan0 2>/dev/null
+    echo ""
+    echo "Checking for duplicate 'auto' declarations:"
+    AUTO_COUNT=$(grep -c '^auto wlan0' /etc/network/interfaces.d/wlan0 2>/dev/null || echo "0")
+    echo "  Found $AUTO_COUNT 'auto wlan0' line(s)"
+    if [ "$AUTO_COUNT" -gt 1 ]; then
+        echo "  WARNING: Multiple 'auto wlan0' declarations found!"
+    fi
+else
+    echo "  (file not found)"
+fi
+echo ""
+echo "/etc/wpa_supplicant.conf:"
+if [ -f /etc/wpa_supplicant.conf ]; then
+    if [ -r /etc/wpa_supplicant.conf ]; then
+        echo "  (file exists, showing first 10 lines):"
+        head -10 /etc/wpa_supplicant.conf 2>/dev/null | sed 's/^/  /'
+    else
+        echo "  (file exists but not readable - permissions: $(ls -l /etc/wpa_supplicant.conf | awk '{print $1}'))"
+        echo "  File size: $(stat -c%s /etc/wpa_supplicant.conf 2>/dev/null || echo 'unknown') bytes"
+    fi
+else
+    echo "  (file not found)"
+fi
+echo ""
+
+echo "=== ifupdown Diagnostics ==="
+echo "Checking /etc/network/interfaces content:"
+cat /etc/network/interfaces 2>/dev/null | grep -E "(auto|iface|source)" || echo "  (error reading file)"
+echo ""
+echo "Checking /etc/network/interfaces.d/wlan0 content:"
+if [ -f /etc/network/interfaces.d/wlan0 ]; then
+    echo "File exists, showing raw content:"
+    cat /etc/network/interfaces.d/wlan0 | cat -A
+    echo ""
+    echo "Checking for 'auto' occurrences:"
+    grep -n "auto" /etc/network/interfaces.d/wlan0 || echo "  No 'auto' found"
+    echo ""
+    echo "Line count: $(wc -l < /etc/network/interfaces.d/wlan0)"
+else
+    echo "  File not found"
+fi
+echo ""
+
+echo "=== SSH Status ==="
+SSH_PID=$(ps | grep "[s]shd" | awk '{print $1}' | head -1)
+if [ -n "${SSH_PID}" ]; then
+    echo "sshd is running (PID: ${SSH_PID})"
+    echo "SSH listening on:"
+    netstat -tlnp 2>/dev/null | grep ":22 " || ss -tlnp 2>/dev/null | grep ":22 " || echo "  (netstat/ss not available, checking with ps)"
+else
+    echo "sshd is NOT running"
+    echo "Checking if OpenSSH is installed:"
+    ls -la /usr/sbin/sshd /sbin/sshd 2>/dev/null || echo "  sshd binary not found"
+fi
+echo ""
+
+echo "=== Network IP Address ==="
+WLAN0_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+if [ -n "${WLAN0_IP}" ]; then
+    echo "wlan0 IP address: ${WLAN0_IP}"
+    echo "Try: ssh carputer@${WLAN0_IP}"
+else
+    echo "No IP address on wlan0"
+fi
+echo ""
+
+echo "=== mDNS / Avahi Hostname ==="
+if [ -f /etc/hostname ]; then
+    HOSTNAME=$(cat /etc/hostname)
+    echo "Hostname: ${HOSTNAME}"
+    echo ""
+    echo "SSH Connection Options:"
+    echo "  1. Use IP address (RECOMMENDED - most reliable):"
+    if [ -n "${WLAN0_IP}" ]; then
+        echo "     ssh carputer@${WLAN0_IP}"
+    else
+        echo "     (IP address not available)"
+    fi
+    echo ""
+    echo "  2. Use mDNS hostname (may hang if mDNS not working):"
+    echo "     ssh carputer@${HOSTNAME}.local"
+    echo ""
+    echo "Avahi Status:"
+    if [ -n "${AVAHI_PID}" ]; then
+        echo "  avahi-daemon is running"
+        echo "  Checking if hostname is advertised..."
+        # Try to check if Avahi is advertising (this might hang, so skip if it does)
+        echo "  (Run 'avahi-browse -a' manually to check mDNS services)"
+    else
+        echo "  avahi-daemon is NOT running"
+        echo "  mDNS will not work - use IP address instead"
+    fi
+else
+    echo "Hostname file not found"
+fi
+echo ""
+
+echo "=== dmesg (last 20 lines, network related) ==="
+# Limit dmesg output to avoid hanging
+dmesg 2>/dev/null | grep -i -E "(wlan|wifi|network|brcmfmac|firmware)" | tail -20 || echo "  (dmesg unavailable or no matches)"
+echo ""
+
