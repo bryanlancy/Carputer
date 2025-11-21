@@ -1,0 +1,123 @@
+#!/bin/sh
+# Debug SSH key authentication setup
+
+echo "=== SSH Key Authentication Debug ==="
+echo ""
+
+echo "1. Checking authorized_keys file:"
+if [ -f /home/carputer/.ssh/authorized_keys ]; then
+    echo "   ✓ File exists"
+    echo "   Contents:"
+    cat /home/carputer/.ssh/authorized_keys | sed 's/^/      /'
+    echo ""
+    echo "   Permissions:"
+    ls -la /home/carputer/.ssh/authorized_keys | sed 's/^/      /'
+else
+    echo "   ✗ File does NOT exist"
+fi
+
+echo ""
+echo "2. Checking .ssh directory:"
+if [ -d /home/carputer/.ssh ]; then
+    echo "   ✓ Directory exists"
+    ls -la /home/carputer/.ssh | sed 's/^/      /'
+else
+    echo "   ✗ Directory does NOT exist"
+fi
+
+echo ""
+echo "3. Checking user ownership:"
+if [ -f /home/carputer/.ssh/authorized_keys ]; then
+    OWNER=$(stat -c '%U:%G' /home/carputer/.ssh/authorized_keys 2>/dev/null || ls -l /home/carputer/.ssh/authorized_keys | awk '{print $3 ":" $4}')
+    echo "   Owner: ${OWNER}"
+    if [ "${OWNER}" = "carputer:carputer" ]; then
+        echo "   ✓ Correct ownership"
+    else
+        echo "   ✗ Wrong ownership (should be carputer:carputer)"
+    fi
+fi
+
+echo ""
+echo "4. Checking sshd_config:"
+if [ -f /etc/ssh/sshd_config ]; then
+    echo "   PasswordAuthentication:"
+    grep "^PasswordAuthentication" /etc/ssh/sshd_config | sed 's/^/      /' || echo "      (not set, defaults to yes)"
+    echo "   PubkeyAuthentication:"
+    grep "^PubkeyAuthentication" /etc/ssh/sshd_config | sed 's/^/      /' || echo "      (not set, defaults to yes)"
+    echo "   AuthorizedKeysFile:"
+    grep "^AuthorizedKeysFile" /etc/ssh/sshd_config | sed 's/^/      /' || echo "      (not set, defaults to .ssh/authorized_keys)"
+else
+    echo "   ✗ sshd_config not found"
+fi
+
+echo ""
+echo "5. Testing key format:"
+if [ -f /home/carputer/.ssh/authorized_keys ]; then
+    FIRST_LINE=$(head -1 /home/carputer/.ssh/authorized_keys)
+    if echo "${FIRST_LINE}" | grep -qE "^(ssh-rsa|ssh-ed25519|ecdsa-sha2|ssh-dss) "; then
+        echo "   ✓ Key format looks valid"
+        KEY_TYPE=$(echo "${FIRST_LINE}" | awk '{print $1}')
+        echo "   Key type: ${KEY_TYPE}"
+    else
+        echo "   ✗ Key format looks invalid"
+        echo "   First line: ${FIRST_LINE:0:50}..."
+    fi
+fi
+
+echo ""
+echo "6. Checking permissions (OpenSSH StrictModes requirements):"
+HOME_DIR="/home/carputer"
+SSH_DIR="/home/carputer/.ssh"
+AUTH_KEYS="/home/carputer/.ssh/authorized_keys"
+
+if [ -d "${HOME_DIR}" ]; then
+    HOME_PERMS=$(stat -c '%a' "${HOME_DIR}" 2>/dev/null || ls -ld "${HOME_DIR}" | awk '{print $1}')
+    echo "   Home directory permissions: ${HOME_PERMS}"
+    if [ -w "${HOME_DIR}" ] && [ "$(stat -c '%u' "${HOME_DIR}" 2>/dev/null)" != "$(id -u carputer 2>/dev/null)" ]; then
+        echo "   ✗ Home directory is writable by others (OpenSSH will reject)"
+    else
+        echo "   ✓ Home directory permissions OK"
+    fi
+fi
+
+if [ -d "${SSH_DIR}" ]; then
+    SSH_PERMS=$(stat -c '%a' "${SSH_DIR}" 2>/dev/null || ls -ld "${SSH_DIR}" | awk '{print $1}')
+    echo "   .ssh directory permissions: ${SSH_PERMS}"
+    if [ "${SSH_PERMS}" != "700" ] && [ "${SSH_PERMS}" != "drwx------" ]; then
+        echo "   ✗ .ssh directory should be 700 (drwx------)"
+    else
+        echo "   ✓ .ssh directory permissions OK"
+    fi
+fi
+
+if [ -f "${AUTH_KEYS}" ]; then
+    AUTH_PERMS=$(stat -c '%a' "${AUTH_KEYS}" 2>/dev/null || ls -l "${AUTH_KEYS}" | awk '{print $1}')
+    echo "   authorized_keys permissions: ${AUTH_PERMS}"
+    if [ "${AUTH_PERMS}" != "600" ] && [ "${AUTH_PERMS}" != "-rw-------" ]; then
+        echo "   ✗ authorized_keys should be 600 (-rw-------)"
+    else
+        echo "   ✓ authorized_keys permissions OK"
+    fi
+fi
+
+echo ""
+echo "7. Checking StrictModes setting:"
+if [ -f /etc/ssh/sshd_config ]; then
+    STRICT_MODES=$(grep "^StrictModes" /etc/ssh/sshd_config | awk '{print $2}' || echo "yes")
+    echo "   StrictModes: ${STRICT_MODES} (default is yes if not set)"
+    if [ "${STRICT_MODE}" != "no" ]; then
+        echo "   (OpenSSH will check that home/.ssh/authorized_keys have correct permissions)"
+    fi
+fi
+
+echo ""
+echo "=== Manual Test ==="
+echo "To test from another machine:"
+echo "  ssh -v -i /path/to/private/key carputer@carputer-1.local"
+echo ""
+echo "The verbose output should show:"
+echo "  debug1: Offering public key: ..."
+echo "  debug1: Server accepts key: ..."
+echo ""
+
+

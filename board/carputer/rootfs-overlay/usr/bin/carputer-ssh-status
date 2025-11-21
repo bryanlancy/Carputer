@@ -1,0 +1,150 @@
+#!/bin/sh
+# Quick SSH status check and fix script
+
+echo "=== SSH Status ==="
+
+# Check if sshd binary exists
+if [ ! -f /usr/sbin/sshd ]; then
+    echo "✗ sshd binary not found"
+    exit 1
+fi
+
+# Check if sshd is running and listening
+SSH_PID=$(ps | grep "[s]shd" | awk '{print $1}' | head -1)
+if [ -n "${SSH_PID}" ]; then
+    if netstat -tlnp 2>/dev/null | grep -q ":22 "; then
+        echo "✓ sshd running (PID: ${SSH_PID}) and listening on port 22"
+        exit 0
+    else
+        echo "✗ sshd running (PID: ${SSH_PID}) but NOT listening on port 22"
+        echo "  Killing broken process..."
+        kill "${SSH_PID}" 2>/dev/null
+        sleep 1
+        kill -9 "${SSH_PID}" 2>/dev/null || true
+    fi
+else
+    echo "✗ sshd not running"
+fi
+
+# Only proceed with fixes if running as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo ""
+    echo "⚠ Run as root to fix: sudo carputer-ssh-status"
+    exit 1
+fi
+
+echo ""
+echo "Fixing SSH..."
+
+# Check filesystem
+if mount | grep -q " / .*ro,"; then
+    echo "✗ Filesystem is read-only - cannot fix keys"
+    exit 1
+fi
+
+# Fix /etc/ssh directory
+if [ ! -d /etc/ssh ]; then
+    mkdir -p /etc/ssh
+    chmod 755 /etc/ssh
+fi
+chmod 755 /etc/ssh 2>/dev/null
+chown root:root /etc/ssh 2>/dev/null
+
+# Check and fix keys
+KEY_COUNT=$(ls -1 /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l)
+if [ "${KEY_COUNT}" -eq 0 ]; then
+    echo "  Generating SSH host keys..."
+    /usr/bin/ssh-keygen -A >/dev/null 2>&1
+else
+    # Fix ownership and permissions on existing keys
+    for key in /etc/ssh/ssh_host_*_key; do
+        [ -f "${key}" ] && chmod 600 "${key}" && chown root:root "${key}" 2>/dev/null
+    done
+    for pubkey in /etc/ssh/ssh_host_*_key.pub; do
+        [ -f "${pubkey}" ] && chmod 644 "${pubkey}" && chown root:root "${pubkey}" 2>/dev/null
+    done
+fi
+
+# Verify keys are readable
+UNREADABLE=0
+for key in /etc/ssh/ssh_host_*_key; do
+    if [ -f "${key}" ] && [ ! -r "${key}" ]; then
+        echo "  ✗ ${key} not readable"
+        UNREADABLE=1
+    fi
+done
+
+if [ "${UNREADABLE}" -eq 1 ]; then
+    echo "  ✗ Some keys are not readable - check filesystem permissions"
+    exit 1
+fi
+
+# Clean up any processes using port 22
+echo "  Cleaning up port 22..."
+
+# Kill all sshd processes
+killall sshd 2>/dev/null
+sleep 1
+
+# Find and kill anything using port 22
+if command -v lsof >/dev/null 2>&1; then
+    PORT22_PID=$(lsof -ti :22 2>/dev/null)
+    if [ -n "${PORT22_PID}" ]; then
+        echo "    Found process ${PORT22_PID} using port 22, killing..."
+        kill -9 "${PORT22_PID}" 2>/dev/null
+        sleep 1
+    fi
+fi
+
+# Also check with netstat/ss
+if command -v netstat >/dev/null 2>&1; then
+    PORT22_PID=$(netstat -tlnp 2>/dev/null | grep ":22 " | awk '{print $7}' | cut -d/ -f1 | head -1)
+    if [ -n "${PORT22_PID}" ] && [ "${PORT22_PID}" != "-" ]; then
+        echo "    Found process ${PORT22_PID} using port 22 (via netstat), killing..."
+        kill -9 "${PORT22_PID}" 2>/dev/null
+        sleep 1
+    fi
+fi
+
+# Double-check: kill all sshd processes again
+killall -9 sshd 2>/dev/null
+sleep 2
+
+# Verify port 22 is free
+if command -v netstat >/dev/null 2>&1; then
+    if netstat -tlnp 2>/dev/null | grep -q ":22 "; then
+        echo "  ⚠ Port 22 is still in use after cleanup attempts"
+        netstat -tlnp 2>/dev/null | grep ":22 " | sed 's/^/    /'
+        echo "  Try manually: killall -9 sshd; fuser -k 22/tcp"
+    else
+        echo "  ✓ Port 22 is free"
+    fi
+fi
+
+# Start sshd
+echo "  Starting sshd..."
+if [ -x /etc/init.d/S50sshd ]; then
+    /etc/init.d/S50sshd start >/dev/null 2>&1
+else
+    /usr/sbin/sshd >/dev/null 2>&1 &
+fi
+
+sleep 2
+
+# Check result
+SSH_PID=$(ps | grep "[s]shd" | awk '{print $1}' | head -1)
+if [ -n "${SSH_PID}" ]; then
+    if netstat -tlnp 2>/dev/null | grep -q ":22 "; then
+        echo "✓ sshd started and listening on port 22"
+        WLAN0_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+        if [ -n "${WLAN0_IP}" ]; then
+            echo "  Connect: ssh carputer@${WLAN0_IP}"
+        fi
+    else
+        echo "✗ sshd started but not listening"
+        echo "  Run manually to see error: /usr/sbin/sshd -D -e"
+    fi
+else
+    echo "✗ Failed to start sshd"
+    echo "  Run manually to see error: /usr/sbin/sshd -D -e"
+fi
