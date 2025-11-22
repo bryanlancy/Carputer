@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
+import { getApiUrl } from '../utils/api'
+import { useRealtime, RealtimeMessage } from '../hooks/useRealtime'
+import { NotificationPopup } from '../components/NotificationPopup'
 
 interface Device {
   id: number
@@ -14,7 +17,7 @@ interface Device {
   current_version: string | null
   current_build_id: string | null
   current_ip: string | null
-  uptime: number | null
+  uptime: number | string | null
   services_status: Record<string, boolean> | null
   status: string
   last_seen: string | null
@@ -25,16 +28,78 @@ interface Device {
 type SortField = 'status' | 'hostname' | 'device_id' | 'current_ip' | 'last_seen'
 type SortDirection = 'asc' | 'desc'
 
+interface NotificationState {
+  id: string
+  title: string
+  message: string
+  type: 'online' | 'offline'
+  timestamp: Date
+}
+
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [notifications, setNotifications] = useState<NotificationState[]>([])
+
+  // Handle realtime messages
+  const handleRealtimeMessage = useCallback((message: RealtimeMessage) => {
+    if (message.type === 'device_update' && message.device) {
+      const device = message.device as Device
+
+      // Update device in state
+      setDevices((prevDevices) => {
+        const deviceIndex = prevDevices.findIndex((d) => d.id === device.id)
+        if (deviceIndex >= 0) {
+          // Update existing device
+          const updated = [...prevDevices]
+          updated[deviceIndex] = device
+          return updated
+        } else {
+          // Add new device
+          return [...prevDevices, device]
+        }
+      })
+
+      // Show notification if device status changed
+      if (message.notification) {
+        const notificationType = device.status === 'online' ? 'online' : 'offline'
+        const notification: NotificationState = {
+          id: `${message.notification.id || Date.now()}-${Math.random()}`,
+          title: message.notification.title || `${device.hostname || device.device_id} ${device.status}`,
+          message: message.notification.message || `${device.hostname || device.device_id} is now ${device.status}`,
+          type: notificationType,
+          timestamp: new Date(),
+        }
+        setNotifications((prev) => [...prev, notification])
+      }
+    } else if (message.type === 'notification' && message.notification) {
+      // Show standalone notification
+      const notification = message.notification
+      const notificationType = notification.notification_type?.type_code?.includes('online') ? 'online' : 'offline'
+      const notificationState: NotificationState = {
+        id: `${notification.id || Date.now()}-${Math.random()}`,
+        title: notification.title || 'Device notification',
+        message: notification.message || 'Device status changed',
+        type: notificationType,
+        timestamp: new Date(notification.created_at || Date.now()),
+      }
+      setNotifications((prev) => [...prev, notificationState])
+    }
+  }, [])
+
+  // Subscribe to realtime updates
+  const { connected } = useRealtime(handleRealtimeMessage)
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+  }, [])
 
   useEffect(() => {
     const fetchDevices = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+        const apiUrl = getApiUrl()
         const response = await fetch(`${apiUrl}/api/devices`)
         if (response.ok) {
           const data = await response.json()
@@ -48,10 +113,12 @@ export default function DevicesPage() {
     }
 
     fetchDevices()
-    // Refresh every 15 seconds
-    const interval = setInterval(fetchDevices, 15000)
-    return () => clearInterval(interval)
-  }, [])
+    // Only refresh periodically if realtime is not connected
+    if (!connected) {
+      const interval = setInterval(fetchDevices, 15000)
+      return () => clearInterval(interval)
+    }
+  }, [connected])
 
   // Sort devices
   const sortedDevices = useMemo(() => {
@@ -127,11 +194,13 @@ export default function DevicesPage() {
     }
   }
 
-  const formatUptime = (seconds: number | null): string => {
+  const formatUptime = (seconds: number | string | null): string => {
     if (!seconds) return 'N/A'
-    const days = Math.floor(seconds / 86400)
-    const hours = Math.floor((seconds % 86400) / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
+    const numSeconds = typeof seconds === 'string' ? parseInt(seconds, 10) : seconds
+    if (isNaN(numSeconds)) return 'N/A'
+    const days = Math.floor(numSeconds / 86400)
+    const hours = Math.floor((numSeconds % 86400) / 3600)
+    const minutes = Math.floor((numSeconds % 3600) / 60)
 
     if (days > 0) return `${days}d ${hours}h`
     if (hours > 0) return `${hours}h ${minutes}m`
@@ -148,9 +217,18 @@ export default function DevicesPage() {
 
   return (
     <div className={styles.container}>
+      {/* Notification Popups */}
+      {notifications.map((notification) => (
+        <NotificationPopup
+          key={notification.id}
+          notification={notification}
+          onClose={() => removeNotification(notification.id)}
+        />
+      ))}
+
       <header className={styles.header}>
         <h1>Devices</h1>
-        <p>Manage and monitor fleet devices</p>
+        <p>Manage and monitor fleet devices {connected && <span className={styles.realtimeIndicator}>(Live)</span>}</p>
       </header>
 
       <main className={styles.main}>
