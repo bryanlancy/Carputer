@@ -1,164 +1,864 @@
-import express from 'express';
-import { z } from 'zod';
+import express from 'express'
+import { z } from 'zod'
+import { ImageVerificationService } from '../services/imageVerification'
+import { NotificationService } from '../services/notification'
+import { DeviceStatusService } from '../services/deviceStatus'
+import { authenticateDevice } from '../middleware/deviceAuth'
+import { broadcastDeviceUpdate, broadcastNotification } from '../routes/realtime'
 
-const router = express.Router();
+const router = express.Router()
 
-// Device registration schema
+// Manual device registration schema (legacy, for backward compatibility)
 const deviceRegistrationSchema = z.object({
-  deviceId: z.string().min(1),
-  hostname: z.string().optional(),
-  vin: z.string().optional(),
-  hardwareRev: z.string().optional(),
-  buildId: z.string().optional(),
-  registrationToken: z.string().min(1),
-});
+	deviceId: z.string().min(1),
+	hostname: z.string().optional(),
+	vin: z.string().optional(),
+	hardwareRev: z.string().optional(),
+	buildId: z.string().optional(),
+	registrationToken: z.string().min(1),
+})
+
+// Automatic device registration schema
+const autoDeviceRegistrationSchema = z.object({
+	macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, {
+		message:
+			'MAC address must be in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX',
+	}),
+	deviceId: z.string().min(1).optional(), // Optional, will be generated if not provided
+	hostname: z.string().optional(),
+	vin: z.string().optional(),
+	hardwareRev: z.string().optional(),
+	buildId: z.string().optional(),
+	imageBuildHash: z.string().min(1), // Required for automatic registration
+	imageSignature: z.string().optional(), // Optional signature verification
+	version: z.string().optional(),
+	ip: z.string().optional(),
+})
 
 // Heartbeat schema
 const heartbeatSchema = z.object({
-  deviceId: z.string().min(1),
-  version: z.string().optional(),
-  buildId: z.string().optional(),
-  uptime: z.number().optional(),
-  ip: z.string().optional(),
-  services: z.record(z.string(), z.boolean()).optional(),
-});
+	deviceId: z.string().min(1).optional(),
+	macAddress: z.string().optional(),
+	version: z.string().optional(),
+	buildId: z.string().optional(),
+	uptime: z.number().optional(),
+	ip: z.string().optional(),
+	services: z.record(z.string(), z.boolean()).optional(),
+})
 
-// Register a new device
+/**
+ * @swagger
+ * /api/devices/register/auto:
+ *   post:
+ *     summary: Automatic device registration
+ *     description: |
+ *       Devices automatically register themselves using their MAC address and image verification.
+ *       This endpoint:
+ *       1. Verifies the device is running a verified carputer image
+ *       2. Registers the device using MAC address as the primary identifier
+ *       3. Automatically authorizes devices with verified images
+ *       4. Updates existing devices if they re-register (e.g., after updates)
+ *     tags: [Devices]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - macAddress
+ *               - imageBuildHash
+ *             properties:
+ *               macAddress:
+ *                 type: string
+ *                 pattern: '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+ *                 example: "AA:BB:CC:DD:EE:FF"
+ *               deviceId:
+ *                 type: string
+ *                 description: Optional, will be generated if not provided
+ *               hostname:
+ *                 type: string
+ *               vin:
+ *                 type: string
+ *               hardwareRev:
+ *                 type: string
+ *               buildId:
+ *                 type: string
+ *               imageBuildHash:
+ *                 type: string
+ *                 description: Required for automatic registration
+ *               imageSignature:
+ *                 type: string
+ *                 description: Optional signature verification
+ *               version:
+ *                 type: string
+ *               ip:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Device re-registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 device:
+ *                   $ref: '#/components/schemas/Device'
+ *                 message:
+ *                   type: string
+ *                 authorized:
+ *                   type: boolean
+ *                 imageUnknown:
+ *                   type: boolean
+ *                 imageVerified:
+ *                   type: boolean
+ *                 requiresReview:
+ *                   type: boolean
+ *       201:
+ *         description: Device registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 device:
+ *                   $ref: '#/components/schemas/Device'
+ *                 message:
+ *                   type: string
+ *                 authorized:
+ *                   type: boolean
+ *                 imageUnknown:
+ *                   type: boolean
+ *                 imageVerified:
+ *                   type: boolean
+ *                 requiresReview:
+ *                   type: boolean
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Image signature invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Device ID conflict
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/register/auto', async (req, res) => {
+	const prisma = req.prisma
+	const clientIp = req.ip || req.socket.remoteAddress || 'unknown'
+
+	try {
+		const data = autoDeviceRegistrationSchema.parse(req.body)
+
+		// Initialize image verification service
+		const imageVerification = new ImageVerificationService(prisma)
+
+		// Get or create image (creates with verified=false if it doesn't exist)
+		const image = await imageVerification.getOrCreateImage(
+			data.imageBuildHash,
+			{
+				signature: data.imageSignature,
+				buildId: data.buildId,
+				gitSha: undefined, // Not provided in registration
+				buildTimestamp: undefined, // Not provided in registration
+				verified: undefined, // Will be false if new image
+			}
+		)
+
+		// Check if image is verified
+		const isImageVerified = image.verified && image.is_active
+
+		// Verify image signature if provided and image is verified
+		if (data.imageSignature && isImageVerified) {
+			const isSignatureValid =
+				await imageVerification.verifyImageSignature(
+					data.imageBuildHash,
+					data.imageSignature
+				)
+
+			if (!isSignatureValid) {
+				await prisma.deviceRegistrationAttempt.create({
+					data: {
+						mac_address: data.macAddress,
+						device_id: data.deviceId || null,
+						ip_address: clientIp,
+						image_build_hash: data.imageBuildHash,
+						image_signature: data.imageSignature,
+						registration_method: 'auto',
+						success: false,
+						error_message: 'Image signature verification failed',
+					},
+				})
+
+				return res.status(403).json({
+					error: 'Image signature invalid',
+					message: 'Image signature verification failed',
+				})
+			}
+		}
+
+		// Allow registration even for unverified images, but they need manual review
+		// Only verified images get automatic authorization
+		const shouldAutoAuthorize = isImageVerified
+
+		// Generate device ID if not provided (use MAC-based ID)
+		const deviceId =
+			data.deviceId ||
+			`carputer-${data.macAddress.replace(/[:-]/g, '').toLowerCase()}`
+
+		// Check if device already exists by MAC address
+		const existingDeviceByMac = await prisma.device.findUnique({
+			where: { mac_address: data.macAddress },
+		})
+
+		// Check if device ID is already taken by a different device
+		const existingDeviceById = await prisma.device.findUnique({
+			where: { device_id: deviceId },
+		})
+
+		let device
+		let isNewDevice = false
+		let wasOffline = false
+
+		if (existingDeviceByMac) {
+			// Device exists - update it (handles re-registration after updates)
+			device = existingDeviceByMac
+
+			// Track if device was previously offline
+			wasOffline = device.status === 'offline'
+
+			// Update authorization if image is now verified and device wasn't authorized
+			const newAuthorized = shouldAutoAuthorize ? true : device.authorized
+			const now = new Date()
+
+			// Update device information
+			device = await prisma.device.update({
+				where: { mac_address: data.macAddress },
+				data: {
+					device_id: deviceId,
+					hostname: data.hostname || device.hostname,
+					vin: data.vin || device.vin,
+					hardware_rev: data.hardwareRev || device.hardware_rev,
+					build_id: data.buildId || device.build_id,
+					current_build_id: data.buildId || device.current_build_id,
+					image_id: image.id,
+					image_build_hash: data.imageBuildHash,
+					image_signature:
+						data.imageSignature || device.image_signature,
+					image_verified: isImageVerified,
+					image_verified_at: isImageVerified
+						? now
+						: device.image_verified_at,
+					current_version: data.version || device.current_version,
+					current_ip: data.ip || clientIp,
+					registration_ip: data.ip || clientIp,
+					authorized: newAuthorized,
+					authorized_at:
+						newAuthorized && !device.authorized_at
+							? now
+							: device.authorized_at,
+					authorized_by:
+						newAuthorized && !device.authorized_by
+							? 'auto'
+							: device.authorized_by,
+					last_registration_attempt: now,
+					status: 'online',
+					last_seen: now,
+				},
+			})
+		} else if (
+			existingDeviceById &&
+			existingDeviceById.mac_address !== data.macAddress
+		) {
+			// Device ID conflict - different MAC address
+			await prisma.deviceRegistrationAttempt.create({
+				data: {
+					mac_address: data.macAddress,
+					device_id: deviceId,
+					ip_address: clientIp,
+					image_build_hash: data.imageBuildHash,
+					image_signature: data.imageSignature || null,
+					registration_method: 'auto',
+					success: false,
+					error_message:
+						'Device ID already registered to different MAC address',
+				},
+			})
+
+			return res.status(409).json({
+				error: 'Device ID conflict',
+				message:
+					'Device ID is already registered to a different device',
+			})
+		} else {
+			// New device - register it
+			isNewDevice = true
+			const now = new Date()
+
+			device = await prisma.device.create({
+				data: {
+					device_id: deviceId,
+					mac_address: data.macAddress,
+					hostname: data.hostname || null,
+					vin: data.vin || null,
+					hardware_rev: data.hardwareRev || null,
+					build_id: data.buildId || null,
+					current_build_id: data.buildId || null,
+					image_id: image.id,
+					image_build_hash: data.imageBuildHash,
+					image_signature: data.imageSignature || null,
+					image_verified: isImageVerified,
+					image_verified_at: isImageVerified ? now : null,
+					current_version: data.version || null,
+					current_ip: data.ip || clientIp,
+					registration_ip: data.ip || clientIp,
+					registration_method: 'auto',
+					authorized: shouldAutoAuthorize,
+					authorized_at: shouldAutoAuthorize ? now : null,
+					authorized_by: shouldAutoAuthorize ? 'auto' : null,
+					status: 'online',
+					first_seen: now,
+					last_seen: now,
+					last_registration_attempt: now,
+				},
+			})
+		}
+
+		// Log successful registration
+		await prisma.deviceRegistrationAttempt.create({
+			data: {
+				mac_address: data.macAddress,
+				device_id: device.device_id,
+				ip_address: clientIp,
+				image_build_hash: data.imageBuildHash,
+				image_signature: data.imageSignature || null,
+				registration_method: 'auto',
+				success: true,
+			},
+		})
+
+		// Create notification if device came online (new device or was offline)
+		if (isNewDevice || wasOffline) {
+			try {
+				const notificationService = new NotificationService(prisma)
+				const notification = await notificationService.createDeviceOnlineNotification(
+					device.id,
+					{
+						message: isNewDevice
+							? `Device ${device.hostname || device.device_id} has registered and come online`
+							: `Device ${device.hostname || device.device_id} has re-registered and come back online`,
+						metadata: {
+							registration_method: device.registration_method,
+							image_verified: isImageVerified,
+							authorized: device.authorized,
+						},
+					}
+				)
+
+				// Broadcast device update and notification to all connected clients
+				try {
+					broadcastDeviceUpdate(device, notification)
+					broadcastNotification(notification)
+				} catch (broadcastError) {
+					// Log broadcast error but don't fail registration
+					console.error('Failed to broadcast device update:', broadcastError)
+				}
+			} catch (notificationError) {
+				// Log notification error but don't fail registration
+				console.error(
+					'Failed to create online notification:',
+					notificationError
+				)
+				// Still broadcast device update even if notification fails
+				try {
+					broadcastDeviceUpdate(device)
+				} catch (broadcastError) {
+					console.error('Failed to broadcast device update:', broadcastError)
+				}
+			}
+		} else {
+			// Still broadcast device update for registration/re-registration
+			try {
+				broadcastDeviceUpdate(device)
+			} catch (broadcastError) {
+				console.error('Failed to broadcast device update:', broadcastError)
+			}
+		}
+
+		res.status(isNewDevice ? 201 : 200).json({
+			device,
+			message: isNewDevice
+				? 'Device registered successfully'
+				: 'Device re-registered successfully',
+			authorized: device.authorized,
+			imageVerified: image.verified,
+			requiresReview: !image.verified,
+		})
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res
+				.status(400)
+				.json({ error: 'Validation error', details: error.errors })
+		}
+		console.error('Automatic device registration error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/devices/register:
+ *   post:
+ *     summary: Manual device registration (Legacy)
+ *     description: |
+ *       For backward compatibility. Manual registration requires a registration token.
+ *       New devices should use /register/auto instead.
+ *     tags: [Devices]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - deviceId
+ *               - registrationToken
+ *             properties:
+ *               deviceId:
+ *                 type: string
+ *               hostname:
+ *                 type: string
+ *               vin:
+ *                 type: string
+ *               hardwareRev:
+ *                 type: string
+ *               buildId:
+ *                 type: string
+ *               registrationToken:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Device registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Device'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Invalid registration token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Device already registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/register', async (req, res) => {
-  try {
-    const data = deviceRegistrationSchema.parse(req.body);
+	try {
+		const data = deviceRegistrationSchema.parse(req.body)
 
-    // Validate registration token
-    const expectedToken = process.env.DEVICE_REGISTRATION_TOKEN;
-    if (!expectedToken || data.registrationToken !== expectedToken) {
-      return res.status(401).json({ error: 'Invalid registration token' });
-    }
+		// Validate registration token
+		const expectedToken = process.env.DEVICE_REGISTRATION_TOKEN
+		if (!expectedToken || data.registrationToken !== expectedToken) {
+			return res.status(401).json({ error: 'Invalid registration token' })
+		}
 
-    const db = req.db;
+		const prisma = req.prisma
 
-    // Check if device already exists
-    const existingDevice = await db.query(
-      'SELECT id FROM devices WHERE device_id = $1',
-      [data.deviceId]
-    );
+		// Check if device already exists
+		const existingDevice = await prisma.device.findUnique({
+			where: { device_id: data.deviceId },
+			select: { id: true },
+		})
 
-    if (existingDevice.rows.length > 0) {
-      return res.status(409).json({ error: 'Device already registered' });
-    }
+		if (existingDevice) {
+			return res.status(409).json({ error: 'Device already registered' })
+		}
 
-    // Insert new device
-    const result = await db.query(
-      `INSERT INTO devices (device_id, hostname, vin, hardware_rev, build_id, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'offline', NOW(), NOW())
-       RETURNING *`,
-      [data.deviceId, data.hostname || null, data.vin || null, data.hardwareRev || null, data.buildId || null]
-    );
+		// Insert new device (manual registration - not auto-authorized)
+		const device = await prisma.device.create({
+			data: {
+				device_id: data.deviceId,
+				hostname: data.hostname || null,
+				vin: data.vin || null,
+				hardware_rev: data.hardwareRev || null,
+				build_id: data.buildId || null,
+				status: 'offline',
+				registration_method: 'manual',
+			},
+		})
 
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    console.error('Device registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.status(201).json(device)
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res
+				.status(400)
+				.json({ error: 'Validation error', details: error.errors })
+		}
+		console.error('Device registration error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-// Heartbeat endpoint
-router.post('/heartbeat', async (req, res) => {
-  try {
-    const data = heartbeatSchema.parse(req.body);
-    const db = req.db;
+/**
+ * @swagger
+ * /api/devices/heartbeat:
+ *   post:
+ *     summary: Device heartbeat
+ *     description: |
+ *       Devices send periodic heartbeats to indicate they're online.
+ *       Supports authentication by MAC address or device ID.
+ *       Only authorized devices can send heartbeats.
+ *     tags: [Devices]
+ *     security:
+ *       - deviceAuth: []
+ *       - deviceIdAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deviceId:
+ *                 type: string
+ *               macAddress:
+ *                 type: string
+ *               version:
+ *                 type: string
+ *               buildId:
+ *                 type: string
+ *               uptime:
+ *                 type: number
+ *               ip:
+ *                 type: string
+ *               services:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: boolean
+ *     responses:
+ *       200:
+ *         description: Heartbeat received successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 deviceId:
+ *                   type: string
+ *                 authorized:
+ *                   type: boolean
+ *                 pendingCommands:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Command'
+ *       400:
+ *         description: Validation error or device identifier required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Device not authorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/heartbeat', authenticateDevice, async (req, res) => {
+	try {
+		const data = heartbeatSchema.parse(req.body)
+		const prisma = req.prisma
 
-    // Update device status
-    await db.query(
-      `UPDATE devices
-       SET last_seen = NOW(),
-           updated_at = NOW(),
-           current_version = $1,
-           current_build_id = $2,
-           current_ip = $3,
-           uptime = $4,
-           services_status = $5,
-           status = 'online'
-       WHERE device_id = $6`,
-      [
-        data.version || null,
-        data.buildId || null,
-        data.ip || null,
-        data.uptime || null,
-        data.services ? JSON.stringify(data.services) : null,
-        data.deviceId,
-      ]
-    );
+		const macAddress =
+			(req.headers['x-device-mac'] as string) || data.macAddress
+		const deviceId = (req.headers['x-device-id'] as string) || data.deviceId
 
-    // Check for pending commands
-    const commands = await db.query(
-      `SELECT * FROM commands
-       WHERE device_id = (SELECT id FROM devices WHERE device_id = $1)
-       AND status = 'pending'
-       ORDER BY created_at ASC
-       LIMIT 10`,
-      [data.deviceId]
-    );
+		if (!macAddress && !deviceId) {
+			return res.status(400).json({
+				error: 'Device identifier required',
+				message:
+					'Provide either macAddress or deviceId in request body or headers',
+			})
+		}
 
-    res.json({
-      status: 'ok',
-      pendingCommands: commands.rows,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    console.error('Heartbeat error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		// Find device by MAC address (preferred) or device ID
+		let device = null
+		if (macAddress) {
+			device = await prisma.device.findUnique({
+				where: { mac_address: macAddress },
+			})
+		}
 
-// Get all devices
+		if (!device && deviceId) {
+			device = await prisma.device.findUnique({
+				where: { device_id: deviceId },
+			})
+		}
+
+		if (!device) {
+			return res.status(404).json({
+				error: 'Device not found',
+				message: 'Device must be registered before sending heartbeats',
+			})
+		}
+
+		// Check if device is authorized
+		if (!device.authorized) {
+			return res.status(403).json({
+				error: 'Device not authorized',
+				message: 'Device registration is pending authorization',
+			})
+		}
+
+		// Track if device was previously offline
+		const wasOffline = device.status === 'offline'
+
+		// Update device status
+		// Convert uptime to integer before converting to BigInt (handles float values)
+		const uptimeValue = data.uptime
+			? BigInt(Math.round(Number(data.uptime)))
+			: device.uptime
+
+		const updatedDevice = await prisma.device.update({
+			where: { id: device.id },
+			data: {
+				last_seen: new Date(),
+				current_version: data.version || device.current_version,
+				current_build_id: data.buildId || device.current_build_id,
+				current_ip: data.ip || device.current_ip,
+				uptime: uptimeValue,
+				services_status: data.services
+					? data.services
+					: device.services_status,
+				status: 'online',
+			},
+		})
+
+		// Create notification if device came online (was previously offline)
+		let notification = null
+		if (wasOffline) {
+			try {
+				const notificationService = new NotificationService(prisma)
+				notification = await notificationService.createDeviceOnlineNotification(
+					device.id,
+					{
+						message: `Device ${device.hostname || device.device_id} has sent heartbeat and come back online`,
+						metadata: {
+							uptime: data.uptime,
+							version: data.version,
+							build_id: data.buildId,
+							services: data.services,
+						},
+					}
+				)
+			} catch (notificationError) {
+				// Log notification error but don't fail heartbeat
+				console.error(
+					'Failed to create online notification:',
+					notificationError
+				)
+			}
+		}
+
+		// Always broadcast device update on heartbeat (wrapped in try-catch)
+		try {
+			if (notification) {
+				broadcastDeviceUpdate(updatedDevice, notification)
+				broadcastNotification(notification)
+			} else {
+				broadcastDeviceUpdate(updatedDevice)
+			}
+		} catch (broadcastError) {
+			// Log broadcast error but don't fail heartbeat
+			console.error('Failed to broadcast device update:', broadcastError)
+		}
+
+		// Check for pending commands
+		const commands = await prisma.command.findMany({
+			where: {
+				device_id: device.id,
+				status: 'pending',
+			},
+			orderBy: {
+				created_at: 'asc',
+			},
+			take: 10,
+		})
+
+		res.json({
+			status: 'ok',
+			deviceId: device.device_id,
+			authorized: device.authorized,
+			pendingCommands: commands,
+		})
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res
+				.status(400)
+				.json({ error: 'Validation error', details: error.errors })
+		}
+		console.error('Heartbeat error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/devices:
+ *   get:
+ *     summary: Get all devices
+ *     description: Returns a list of all registered devices, sorted by status (online first), then by last_seen, then by device_id
+ *     tags: [Devices]
+ *     responses:
+ *       200:
+ *         description: List of devices
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Device'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/', async (req, res) => {
-  try {
-    const db = req.db;
+	try {
+		const prisma = req.prisma
+		const deviceStatusService = new DeviceStatusService(prisma)
 
-    // Sort by status (online first), then by last_seen, then by device_id
-    const result = await db.query(
-      `SELECT * FROM devices
-       ORDER BY
-         CASE status
-           WHEN 'online' THEN 1
-           WHEN 'offline' THEN 2
-           ELSE 3
-         END,
-         last_seen DESC NULLS LAST,
-         device_id ASC`
-    );
+		// Get all devices with status check (automatically marks offline devices)
+		const devices = await deviceStatusService.getAllDevicesWithStatusCheck()
 
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Get devices error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		// Custom sort: online first, then by last_seen (desc), then by device_id (asc)
+		const sortedDevices = devices.sort((a, b) => {
+			const statusOrder = { online: 1, offline: 2 }
+			const aOrder =
+				statusOrder[a.status as keyof typeof statusOrder] || 3
+			const bOrder =
+				statusOrder[b.status as keyof typeof statusOrder] || 3
+			if (aOrder !== bOrder) return aOrder - bOrder
+			if (a.last_seen && b.last_seen) {
+				return b.last_seen.getTime() - a.last_seen.getTime()
+			}
+			if (a.last_seen) return -1
+			if (b.last_seen) return 1
+			return a.device_id.localeCompare(b.device_id)
+		})
 
-// Get device by ID
+		// Convert BigInt values to strings for JSON serialization
+		// Use JSON.stringify with a replacer function to handle BigInt values
+		const jsonString = JSON.stringify(sortedDevices, (key, value) =>
+			typeof value === 'bigint' ? value.toString() : value
+		)
+
+		res.setHeader('Content-Type', 'application/json')
+		res.send(jsonString)
+	} catch (error) {
+		console.error('Get devices error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/devices/{deviceId}:
+ *   get:
+ *     summary: Get device by ID
+ *     description: Returns a single device by its device_id
+ *     tags: [Devices]
+ *     parameters:
+ *       - in: path
+ *         name: deviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device identifier
+ *     responses:
+ *       200:
+ *         description: Device details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Device'
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:deviceId', async (req, res) => {
-  try {
-    const db = req.db;
-    const result = await db.query(
-      `SELECT * FROM devices WHERE device_id = $1`,
-      [req.params.deviceId]
-    );
+	try {
+		const prisma = req.prisma
+		const device = await prisma.device.findUnique({
+			where: { device_id: req.params.deviceId },
+		})
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Device not found' });
-    }
+		if (!device) {
+			return res.status(404).json({ error: 'Device not found' })
+		}
 
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Get device error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.json(device)
+	} catch (error) {
+		console.error('Get device error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-export default router;
-
+export default router
