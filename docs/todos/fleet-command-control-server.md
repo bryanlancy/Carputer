@@ -23,10 +23,25 @@ Design and implement a central web service that tracks Raspberry Pis running the
    - Extend Buildroot image/config management to ship supplicant profiles that prefer the HQ network when detected.
    - Ensure device-initiated connection attempts to the command server begin immediately upon HQ association; retry every 15 seconds while connected, honoring a configurable max retry window (minutes) before backing off.
    - Document fallback behavior when HQ network is unavailable (e.g., stay on vehicular hotspot, exponential backoff).
+   - **Device Connection Requirements** (for future device-side implementation):
+     - Implement network connection manager to monitor interface state and connectivity
+     - Implement registration service to send registration on boot/network connect
+     - Implement heartbeat service to send periodic heartbeats (30-60 second interval)
+     - Implement status management to track and update device status locally
+     - Handle connection retry logic with exponential backoff (5s, 10s, 20s, 40s, 80s, max 5 minutes)
+     - Send explicit offline notification on device shutdown (future enhancement)
+     - See `/fleet-cc-server/docs/DEVICE_ONLINE_OFFLINE.md` for detailed implementation guide
 4. **Device Registration & Authentication**
    - Define registration protocol (pre-shared token vs. mutual TLS) and trust onboarding flow.
    - Implement device heartbeat endpoint (REST/WebSocket) capturing version hash, uptime, rsync timestamp.
    - Store devices in DB with status transitions (online, offline, stale, maintenance).
+   - **Notification System**: Implement notification system for device status changes (online/offline) ✅ **COMPLETED**
+     - Create notification types table for extensible event tracking
+     - Create notifications table with foreign key to device_logs for deeper tracking
+     - Implement notification service for creating and managing notifications
+     - Integrate online/offline notifications into registration and heartbeat endpoints
+     - Create API endpoints for fetching and managing notifications
+     - Document device online/offline establishment process for device-side implementation
 4. **Version Tracking & Comparison**
    - Integrate with Buildroot artifact metadata to compute authoritative “latest” version (e.g., git SHA, build stamp).
    - Implement API/UI to compare device-reported versions to latest and flag drift.
@@ -43,6 +58,12 @@ Design and implement a central web service that tracks Raspberry Pis running the
    - Create dashboards for fleet overview, device detail pages, command history, and data downloads.
    - Implement live status indicators and notifications (WebSocket/EventSource).
    - Ensure responsive layout and follow shared UI component standards.
+   - **Realtime Updates & Notifications**:
+     - Integrate notification system into UI for displaying device status changes
+     - Implement realtime notification updates using WebSocket/EventSource
+     - Display notification badges and counts in UI
+     - Add notification filtering and management UI
+     - Show device online/offline status changes in real-time
 8. **Security & Access Control**
    - Add user authentication (local accounts/OIDC) with role-based permissions (viewer, operator, admin).
    - Enforce HTTPS, secure secrets storage, and logging of privileged actions.
