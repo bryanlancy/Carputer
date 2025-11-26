@@ -1,64 +1,109 @@
-import express from 'express';
+import express from 'express'
 
-const router = express.Router();
+const router = express.Router()
 
-// Get fleet overview metrics
+/**
+ * @swagger
+ * /api/metrics/overview:
+ *   get:
+ *     summary: Get fleet overview metrics
+ *     description: Returns fleet-wide metrics including device counts by status, version distribution, command statistics, and recent activity.
+ *     tags: [Metrics]
+ *     responses:
+ *       200:
+ *         description: Fleet metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Metrics'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/overview', async (req, res) => {
-  try {
-    const db = req.db;
+	try {
+		const prisma = req.prisma
 
-    // Get device counts by status
-    const statusCounts = await db.query(
-      `SELECT status, COUNT(*) as count
-       FROM devices
-       GROUP BY status`
-    );
+		// Get device counts by status
+		const statusCounts = await prisma.device.groupBy({
+			by: ['status'],
+			_count: true,
+		})
 
-    // Get version distribution
-    const versionDistribution = await db.query(
-      `SELECT current_build_id, COUNT(*) as count
-       FROM devices
-       WHERE current_build_id IS NOT NULL
-       GROUP BY current_build_id
-       ORDER BY count DESC`
-    );
+		// Get version distribution
+		const versionDistributionRaw = await prisma.device.groupBy({
+			by: ['current_build_id'],
+			where: {
+				current_build_id: { not: null },
+			},
+			_count: {
+				current_build_id: true,
+			},
+		})
 
-    // Get command statistics
-    const commandStats = await db.query(
-      `SELECT status, COUNT(*) as count
-       FROM commands
-       WHERE created_at > NOW() - INTERVAL '24 hours'
-       GROUP BY status`
-    );
+		// Sort by count descending
+		const versionDistribution = versionDistributionRaw.sort(
+			(a: any, b: any) =>
+				b._count.current_build_id - a._count.current_build_id
+		)
 
-    // Get recent activity
-    const recentActivity = await db.query(
-      `SELECT COUNT(*) as count
-       FROM devices
-       WHERE last_seen > NOW() - INTERVAL '15 minutes'`
-    );
+		// Get command statistics (last 24 hours)
+		const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+		const commandStats = await prisma.command.groupBy({
+			by: ['status'],
+			where: {
+				created_at: {
+					gte: twentyFourHoursAgo,
+				},
+			},
+			_count: {
+				status: true,
+			},
+		})
 
-    res.json({
-      devices: {
-        byStatus: statusCounts.rows.reduce((acc, row) => {
-          acc[row.status] = parseInt(row.count);
-          return acc;
-        }, {} as Record<string, number>),
-        online: parseInt(recentActivity.rows[0]?.count || '0'),
-      },
-      versions: versionDistribution.rows,
-      commands: {
-        last24h: commandStats.rows.reduce((acc, row) => {
-          acc[row.status] = parseInt(row.count);
-          return acc;
-        }, {} as Record<string, number>),
-      },
-    });
-  } catch (error) {
-    console.error('Get metrics error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		// Get online devices (status='online' AND seen in last 15 minutes)
+		const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
+		const onlineDevices = await prisma.device.count({
+			where: {
+				status: 'online',
+				last_seen: {
+					gte: fifteenMinutesAgo,
+				},
+			},
+		})
 
-export default router;
+		res.json({
+			devices: {
+				byStatus: statusCounts.reduce(
+					(acc: Record<string, number>, row: any) => {
+						acc[row.status] = row._count
+						return acc
+					},
+					{} as Record<string, number>
+				),
+				online: onlineDevices,
+			},
+			versions: versionDistribution.map((v: any) => ({
+				current_build_id: v.current_build_id,
+				count: v._count.current_build_id,
+			})),
+			commands: {
+				last24h: commandStats.reduce(
+					(acc: Record<string, number>, row: any) => {
+						acc[row.status] = row._count.status
+						return acc
+					},
+					{} as Record<string, number>
+				),
+			},
+		})
+	} catch (error) {
+		console.error('Get metrics error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
+export default router

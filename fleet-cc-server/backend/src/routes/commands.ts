@@ -1,150 +1,340 @@
-import express from 'express';
-import { z } from 'zod';
+import express from 'express'
+import { z } from 'zod'
 
-const router = express.Router();
+const router = express.Router()
 
 // Command creation schema
 const commandSchema = z.object({
-  deviceId: z.string().min(1),
-  command: z.enum(['reboot', 'start_service', 'stop_service', 'trigger_rsync', 'collect_logs', 'update']),
-  parameters: z.record(z.any()).optional(),
-});
+	deviceId: z.string().min(1),
+	command: z.enum([
+		'reboot',
+		'start_service',
+		'stop_service',
+		'trigger_rsync',
+		'collect_logs',
+		'update',
+	]),
+	parameters: z.record(z.any()).optional(),
+})
 
 // Command status update schema
 const commandStatusSchema = z.object({
-  status: z.enum(['pending', 'running', 'completed', 'failed']),
-  result: z.any().optional(),
-  error: z.string().optional(),
-});
+	status: z.enum(['pending', 'running', 'completed', 'failed']),
+	result: z.any().optional(),
+	error: z.string().optional(),
+})
 
-// Create a new command
+/**
+ * @swagger
+ * /api/commands:
+ *   post:
+ *     summary: Create a new command
+ *     description: Creates a new command for a device. The command will be in 'pending' status until the device picks it up.
+ *     tags: [Commands]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - deviceId
+ *               - command
+ *             properties:
+ *               deviceId:
+ *                 type: string
+ *                 description: Device identifier
+ *               command:
+ *                 type: string
+ *                 enum: [reboot, start_service, stop_service, trigger_rsync, collect_logs, update]
+ *               parameters:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Command-specific parameters
+ *     responses:
+ *       201:
+ *         description: Command created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Command'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/', async (req, res) => {
-  try {
-    const data = commandSchema.parse(req.body);
-    const db = req.db;
+	try {
+		const data = commandSchema.parse(req.body)
+		const prisma = req.prisma
 
-    // Get device ID from device_id
-    const deviceResult = await db.query(
-      'SELECT id FROM devices WHERE device_id = $1',
-      [data.deviceId]
-    );
+		// Get device ID from device_id
+		const device = await prisma.device.findUnique({
+			where: { device_id: data.deviceId },
+			select: { id: true },
+		})
 
-    if (deviceResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Device not found' });
-    }
+		if (!device) {
+			return res.status(404).json({ error: 'Device not found' })
+		}
 
-    const deviceDbId = deviceResult.rows[0].id;
+		// Insert command
+		const command = await prisma.command.create({
+			data: {
+				device_id: device.id,
+				command: data.command,
+				parameters: data.parameters || null,
+				status: 'pending',
+			},
+		})
 
-    // Insert command
-    const result = await db.query(
-      `INSERT INTO commands (device_id, command, parameters, status, created_at, updated_at)
-       VALUES ($1, $2, $3, 'pending', NOW(), NOW())
-       RETURNING *`,
-      [deviceDbId, data.command, data.parameters ? JSON.stringify(data.parameters) : null]
-    );
+		res.status(201).json(command)
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res
+				.status(400)
+				.json({ error: 'Validation error', details: error.errors })
+		}
+		console.error('Create command error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    console.error('Create command error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Update command status (called by device)
+/**
+ * @swagger
+ * /api/commands/{commandId}/status:
+ *   patch:
+ *     summary: Update command status
+ *     description: Updates the status of a command. Typically called by the device to report command execution results.
+ *     tags: [Commands]
+ *     parameters:
+ *       - in: path
+ *         name: commandId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Command ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [pending, running, completed, failed]
+ *               result:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Command execution result
+ *               error:
+ *                 type: string
+ *                 description: Error message if command failed
+ *     responses:
+ *       200:
+ *         description: Command status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Command'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Command not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.patch('/:commandId/status', async (req, res) => {
-  try {
-    const { commandId } = req.params;
-    const data = commandStatusSchema.parse(req.body);
-    const db = req.db;
+	try {
+		const { commandId } = req.params
+		const data = commandStatusSchema.parse(req.body)
+		const prisma = req.prisma
 
-    const result = await db.query(
-      `UPDATE commands
-       SET status = $1,
-           result = $2,
-           error = $3,
-           updated_at = NOW()
-       WHERE id = $4
-       RETURNING *`,
-      [
-        data.status,
-        data.result ? JSON.stringify(data.result) : null,
-        data.error || null,
-        commandId,
-      ]
-    );
+		const command = await prisma.command.update({
+			where: { id: parseInt(commandId) },
+			data: {
+				status: data.status,
+				result: data.result || null,
+				error: data.error || null,
+				completed_at:
+					data.status === 'completed' || data.status === 'failed'
+						? new Date()
+						: undefined,
+			},
+		})
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Command not found' });
-    }
+		res.json(command)
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res
+				.status(400)
+				.json({ error: 'Validation error', details: error.errors })
+		}
+		if (
+			error &&
+			typeof error === 'object' &&
+			'code' in error &&
+			error.code === 'P2025'
+		) {
+			return res.status(404).json({ error: 'Command not found' })
+		}
+		console.error('Update command status error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-    res.json(result.rows[0]);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    console.error('Update command status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get commands for a device
+/**
+ * @swagger
+ * /api/commands/device/{deviceId}:
+ *   get:
+ *     summary: Get commands for a device
+ *     description: Returns all commands for a specific device, ordered by creation date (newest first)
+ *     tags: [Commands]
+ *     parameters:
+ *       - in: path
+ *         name: deviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Device identifier
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of commands to return
+ *     responses:
+ *       200:
+ *         description: List of commands
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Command'
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/device/:deviceId', async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const db = req.db;
+	try {
+		const { deviceId } = req.params
+		const limit = parseInt(req.query.limit as string) || 50
+		const prisma = req.prisma
 
-    // Get device ID from device_id
-    const deviceResult = await db.query(
-      'SELECT id FROM devices WHERE device_id = $1',
-      [deviceId]
-    );
+		// Get device ID from device_id
+		const device = await prisma.device.findUnique({
+			where: { device_id: deviceId },
+			select: { id: true },
+		})
 
-    if (deviceResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Device not found' });
-    }
+		if (!device) {
+			return res.status(404).json({ error: 'Device not found' })
+		}
 
-    const deviceDbId = deviceResult.rows[0].id;
+		const commands = await prisma.command.findMany({
+			where: { device_id: device.id },
+			orderBy: { created_at: 'desc' },
+			take: limit,
+		})
 
-    const result = await db.query(
-      `SELECT * FROM commands
-       WHERE device_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [deviceDbId, limit]
-    );
+		res.json(commands)
+	} catch (error) {
+		console.error('Get commands error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Get commands error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get command by ID
+/**
+ * @swagger
+ * /api/commands/{commandId}:
+ *   get:
+ *     summary: Get command by ID
+ *     description: Returns a single command by its ID
+ *     tags: [Commands]
+ *     parameters:
+ *       - in: path
+ *         name: commandId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Command ID
+ *     responses:
+ *       200:
+ *         description: Command details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Command'
+ *       404:
+ *         description: Command not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:commandId', async (req, res) => {
-  try {
-    const { commandId } = req.params;
-    const db = req.db;
+	try {
+		const { commandId } = req.params
+		const prisma = req.prisma
 
-    const result = await db.query(
-      'SELECT * FROM commands WHERE id = $1',
-      [commandId]
-    );
+		const command = await prisma.command.findUnique({
+			where: { id: parseInt(commandId) },
+		})
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Device not found' });
-    }
+		if (!command) {
+			return res.status(404).json({ error: 'Command not found' })
+		}
 
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Get command error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.json(command)
+	} catch (error) {
+		console.error('Get command error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-export default router;
-
+export default router
