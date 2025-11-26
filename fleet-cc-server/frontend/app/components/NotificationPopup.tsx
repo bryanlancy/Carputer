@@ -8,10 +8,27 @@ interface NotificationPopupProps {
     id: string
     title: string
     message: string
-    type: 'online' | 'offline'
+    type: 'online' | 'offline' | 'info' | 'success' | 'warning' | 'error'
     timestamp: Date
   }
   onClose: () => void
+}
+
+const getIcon = (type: string): string => {
+  switch (type) {
+    case 'online':
+    case 'success':
+      return '✓'
+    case 'offline':
+    case 'error':
+      return '✕'
+    case 'warning':
+      return '⚠'
+    case 'info':
+      return 'ℹ'
+    default:
+      return '•'
+  }
 }
 
 export function NotificationPopup({ notification, onClose }: NotificationPopupProps) {
@@ -27,7 +44,7 @@ export function NotificationPopup({ notification, onClose }: NotificationPopupPr
   return (
     <div className={`${styles.notification} ${styles[notification.type]}`}>
       <div className={styles.icon}>
-        {notification.type === 'online' ? '✓' : '⚠'}
+        {getIcon(notification.type)}
       </div>
       <div className={styles.content}>
         <div className={styles.title}>{notification.title}</div>

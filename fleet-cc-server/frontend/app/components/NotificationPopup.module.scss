@@ -1,7 +1,4 @@
 .notification {
-  position: fixed;
-  top: 20px;
-  right: 20px;
   min-width: 300px;
   max-width: 400px;
   padding: 16px;
@@ -10,7 +7,6 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  z-index: 1000;
   animation: slideIn 0.3s ease-out;
   cursor: pointer;
   transition: transform 0.2s ease;
@@ -20,13 +16,25 @@
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
   }
 
-  &.online {
+  &.online,
+  &.success {
     background-color: #10b981;
     color: white;
   }
 
-  &.offline {
+  &.offline,
+  &.warning {
     background-color: #f59e0b;
+    color: white;
+  }
+
+  &.error {
+    background-color: #ef4444;
+    color: white;
+  }
+
+  &.info {
+    background-color: #3b82f6;
     color: white;
   }
 }
@@ -90,9 +98,7 @@
 
 @media (max-width: 768px) {
   .notification {
-    top: 10px;
-    right: 10px;
-    left: 10px;
+    min-width: auto;
     max-width: none;
   }
 }
