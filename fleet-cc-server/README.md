@@ -10,7 +10,9 @@ Central web service for managing the Carputer fleet, tracking device status, orc
 
 ## Features
 
+- **Automatic device registration** with MAC address-based identification and image verification
 - Device registration and heartbeat monitoring
+- Image verification system (only verified carputer images can register)
 - Version tracking and comparison
 - Command dispatch and job queue
 - Log and data synchronization
@@ -138,4 +140,17 @@ The `setup.sh` script will automatically create these files from the examples an
 ## Documentation
 
 See `/docs` directory for detailed documentation.
+
+### Device Registration
+
+The server implements automatic device registration with hardware-based identification:
+
+- **Quick Start**: See [docs/DEVICE_REGISTRATION_QUICKSTART.md](./docs/DEVICE_REGISTRATION_QUICKSTART.md)
+- **Full Documentation**: See [docs/DEVICE_REGISTRATION.md](./docs/DEVICE_REGISTRATION.md)
+
+Key features:
+- Devices automatically register using MAC address as hardware identifier
+- Only verified carputer images can register devices
+- Devices maintain identity across software updates
+- Automatic authorization for devices running verified images
 
