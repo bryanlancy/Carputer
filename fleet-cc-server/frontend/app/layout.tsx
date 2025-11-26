@@ -2,38 +2,48 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import './globals.scss'
 import styles from './layout.module.scss'
+import { NotificationProvider } from './contexts/NotificationContext'
+import { NotificationFeed } from './components/NotificationFeed'
 
 export const metadata: Metadata = {
-  title: 'Fleet Command & Control',
-  description: 'Central management system for Carputer fleet',
+	title: 'Fleet Command & Control',
+	description: 'Central management system for Carputer fleet',
 }
 
 export default function RootLayout({
-  children,
+	children,
 }: {
-  children: React.ReactNode
+	children: React.ReactNode
 }) {
-  return (
-    <html lang="en">
-      <body>
-        <nav className={styles.nav}>
-          <div className={styles.navContainer}>
-            <Link href="/" className={styles.navBrand}>
-              Fleet CC
-            </Link>
-            <div className={styles.navLinks}>
-              <Link href="/" className={styles.navLink}>
-                Dashboard
-              </Link>
-              <Link href="/devices" className={styles.navLink}>
-                Devices
-              </Link>
-            </div>
-          </div>
-        </nav>
-        {children}
-      </body>
-    </html>
-  )
+	return (
+		<html lang='en'>
+			<body>
+				<NotificationProvider>
+					<nav className={styles.nav}>
+						<div className={styles.navContainer}>
+							<Link href='/' className={styles.navBrand}>
+								Fleet CC
+							</Link>
+							<div className={styles.navLinks}>
+								<Link href='/' className={styles.navLink}>
+									Dashboard
+								</Link>
+								<Link href='/devices' className={styles.navLink}>
+									Devices
+								</Link>
+								<Link href='/images' className={styles.navLink}>
+									Images
+								</Link>
+								<Link href='/docs' className={styles.navLink}>
+									Docs
+								</Link>
+							</div>
+						</div>
+					</nav>
+					{children}
+					<NotificationFeed />
+				</NotificationProvider>
+			</body>
+		</html>
+	)
 }
-

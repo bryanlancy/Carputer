@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
 import { getApiUrl } from '../utils/api'
-import { useRealtime, RealtimeMessage } from '../hooks/useRealtime'
-import { NotificationPopup } from '../components/NotificationPopup'
+import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
+import { useNotifications } from '../contexts/NotificationContext'
 
 interface Device {
   id: number
@@ -28,23 +28,15 @@ interface Device {
 type SortField = 'status' | 'hostname' | 'device_id' | 'current_ip' | 'last_seen'
 type SortDirection = 'asc' | 'desc'
 
-interface NotificationState {
-  id: string
-  title: string
-  message: string
-  type: 'online' | 'offline'
-  timestamp: Date
-}
-
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [notifications, setNotifications] = useState<NotificationState[]>([])
+  const { addNotification } = useNotifications()
 
-  // Handle realtime messages
-  const handleRealtimeMessage = useCallback((message: RealtimeMessage) => {
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (message.type === 'device_update' && message.device) {
       const device = message.device as Device
 
@@ -65,36 +57,26 @@ export default function DevicesPage() {
       // Show notification if device status changed
       if (message.notification) {
         const notificationType = device.status === 'online' ? 'online' : 'offline'
-        const notification: NotificationState = {
-          id: `${message.notification.id || Date.now()}-${Math.random()}`,
+        addNotification({
           title: message.notification.title || `${device.hostname || device.device_id} ${device.status}`,
           message: message.notification.message || `${device.hostname || device.device_id} is now ${device.status}`,
           type: notificationType,
-          timestamp: new Date(),
-        }
-        setNotifications((prev) => [...prev, notification])
+        })
       }
     } else if (message.type === 'notification' && message.notification) {
       // Show standalone notification
       const notification = message.notification
       const notificationType = notification.notification_type?.type_code?.includes('online') ? 'online' : 'offline'
-      const notificationState: NotificationState = {
-        id: `${notification.id || Date.now()}-${Math.random()}`,
+      addNotification({
         title: notification.title || 'Device notification',
         message: notification.message || 'Device status changed',
         type: notificationType,
-        timestamp: new Date(notification.created_at || Date.now()),
-      }
-      setNotifications((prev) => [...prev, notificationState])
+      })
     }
-  }, [])
+  }, [addNotification])
 
-  // Subscribe to realtime updates
-  const { connected } = useRealtime(handleRealtimeMessage)
-
-  const removeNotification = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }, [])
+  // Subscribe to WebSocket updates
+  const { connected } = useWebSocket(handleWebSocketMessage, ['devices'])
 
   useEffect(() => {
     const fetchDevices = async () => {
@@ -217,15 +199,6 @@ export default function DevicesPage() {
 
   return (
     <div className={styles.container}>
-      {/* Notification Popups */}
-      {notifications.map((notification) => (
-        <NotificationPopup
-          key={notification.id}
-          notification={notification}
-          onClose={() => removeNotification(notification.id)}
-        />
-      ))}
-
       <header className={styles.header}>
         <h1>Devices</h1>
         <p>Manage and monitor fleet devices {connected && <span className={styles.realtimeIndicator}>(Live)</span>}</p>
