@@ -15,7 +15,7 @@ COPY package*.json ./
 # The anonymous volume /app/node_modules preserves node_modules from this image
 EXPOSE 3000
 ENV PORT 3000
-CMD ["sh", "-c", "npm install && npm run dev"]
+CMD ["sh", "-c", "npm install --legacy-peer-deps && npm run dev"]
 
 # Rebuild the source code only when needed
 FROM base AS builder

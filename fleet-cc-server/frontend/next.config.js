@@ -4,6 +4,12 @@ const path = require('path')
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // Transpile swagger-ui-react and its dependencies
+  transpilePackages: [
+    'swagger-ui-react',
+    'swagger-ui',
+    'react-syntax-highlighter',
+  ],
   sassOptions: {
     includePaths: ['./styles'],
   },

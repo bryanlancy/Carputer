@@ -1,19 +1,26 @@
 {
   "watch": ["src"],
-  "ext": "ts",
+  "ext": "ts,js,json",
   "ignore": [
     "node_modules",
     "dist",
     "**/node_modules/**",
     "**/dist/**",
     "../**",
-    "../../**"
+    "../../**",
+    "*.test.ts",
+    "*.spec.ts",
+    ".git"
   ],
   "exec": "tsx src/index.ts",
   "legacyWatch": true,
-  "verbose": false,
+  "verbose": true,
   "usePolling": true,
-  "interval": 1000,
-  "delay": 500
+  "interval": 3000,
+  "delay": 3000,
+  "restartable": "rs",
+  "colours": true,
+  "signal": "SIGTERM",
+  "checkWatchDelay": 3000
 }
 
