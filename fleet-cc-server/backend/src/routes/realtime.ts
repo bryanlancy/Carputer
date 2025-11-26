@@ -1,31 +1,61 @@
 import express from 'express'
+import { WebSocketServer, WebSocket } from 'ws'
 
 const router = express.Router()
 
 // Store active SSE connections
-const connections = new Set<express.Response>()
+const sseConnections = new Set<express.Response>()
 
-// Broadcast to all connected clients
+// Store active WebSocket connections
+const wsConnections = new Set<WebSocket>()
+
+// Broadcast to all connected clients (both SSE and WebSocket)
 function broadcast(data: any) {
   // Use a replacer function to handle BigInt values (convert to string)
-  const message = `data: ${JSON.stringify(data, (key, value) =>
+  const jsonData = JSON.stringify(data, (key, value) =>
     typeof value === 'bigint' ? value.toString() : value
-  )}\n\n`
-  connections.forEach((res) => {
+  )
+
+  // Broadcast to SSE connections
+  const sseMessage = `data: ${jsonData}\n\n`
+  sseConnections.forEach((res) => {
     try {
-      res.write(message)
+      res.write(sseMessage)
     } catch (error) {
       // Connection closed, remove it
-      connections.delete(res)
+      sseConnections.delete(res)
+    }
+  })
+
+  // Broadcast to WebSocket connections
+  wsConnections.forEach((ws) => {
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(jsonData)
+      } else {
+        // Connection closed, remove it
+        wsConnections.delete(ws)
+      }
+    } catch (error) {
+      // Connection closed, remove it
+      wsConnections.delete(ws)
     }
   })
 }
 
 // Clean up closed connections
 function cleanup() {
-  connections.forEach((res) => {
+  // Clean up SSE connections
+  sseConnections.forEach((res) => {
     if (res.closed || res.destroyed) {
-      connections.delete(res)
+      sseConnections.delete(res)
+    }
+  })
+
+  // Clean up WebSocket connections
+  wsConnections.forEach((ws) => {
+    if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) {
+      wsConnections.delete(ws)
     }
   })
 }
@@ -48,14 +78,14 @@ router.get('/devices', (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Cache-Control')
 
   // Add connection to set
-  connections.add(res)
+  sseConnections.add(res)
 
   // Send initial connection message
   try {
     res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`)
   } catch (error) {
     console.error('Failed to send initial SSE message:', error)
-    connections.delete(res)
+    sseConnections.delete(res)
     return res.end()
   }
 
@@ -67,14 +97,14 @@ router.get('/devices', (req, res) => {
       // Check if connection is still valid
       if (res.destroyed || res.writableEnded) {
         if (heartbeatInterval) clearInterval(heartbeatInterval)
-        connections.delete(res)
+        sseConnections.delete(res)
         return
       }
       res.write(`: heartbeat\n\n`)
     } catch (error) {
       console.error('SSE heartbeat error:', error)
       if (heartbeatInterval) clearInterval(heartbeatInterval)
-      connections.delete(res)
+      sseConnections.delete(res)
     }
   }, 30000) // Every 30 seconds
 
@@ -84,7 +114,7 @@ router.get('/devices', (req, res) => {
       clearInterval(heartbeatInterval)
       heartbeatInterval = null
     }
-    connections.delete(res)
+    sseConnections.delete(res)
     if (!res.destroyed && !res.writableEnded) {
       try {
         res.end()
@@ -130,6 +160,122 @@ export function broadcastNotification(notification: any) {
     notification,
     timestamp: new Date().toISOString(),
   })
+}
+
+/**
+ * Broadcast image update
+ */
+export function broadcastImageUpdate(image: any, notification?: any) {
+  broadcast({
+    type: 'image_update',
+    image,
+    notification,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+/**
+ * Broadcast metrics update
+ */
+export function broadcastMetricsUpdate(metrics: any) {
+  broadcast({
+    type: 'metrics_update',
+    metrics,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+/**
+ * Create WebSocket server instance
+ * This should be called from the main server file
+ */
+export function createWebSocketServer(server: any) {
+  const wss = new WebSocketServer({ noServer: true })
+
+  // Handle HTTP upgrade requests
+  server.on('upgrade', (request: any, socket: any, head: Buffer) => {
+    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname
+
+    if (pathname === '/api/realtime/ws') {
+      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        wss.emit('connection', ws, request)
+      })
+    } else {
+      socket.destroy()
+    }
+  })
+
+  wss.on('connection', (ws: WebSocket, req: any) => {
+    console.log('WebSocket client connected')
+    wsConnections.add(ws)
+
+    // Parse query params for channels
+    const url = new URL(req.url || '', 'http://localhost')
+    const channels = url.searchParams.get('channels')?.split(',') || []
+
+    // Send initial connection message
+    try {
+      ws.send(JSON.stringify({
+        type: 'connected',
+        channels,
+        timestamp: new Date().toISOString(),
+      }))
+    } catch (error) {
+      console.error('Failed to send initial WebSocket message:', error)
+    }
+
+    // Handle incoming messages (for two-way communication)
+    ws.on('message', (message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString())
+        console.log('Received WebSocket message:', data)
+        // Handle client messages here if needed
+        // For now, we just acknowledge receipt
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({
+            type: 'pong',
+            timestamp: new Date().toISOString(),
+          }))
+        }
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error)
+      }
+    })
+
+    // Handle client disconnect
+    const cleanup = () => {
+      console.log('WebSocket client disconnected')
+      wsConnections.delete(ws)
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval)
+      }
+    }
+
+    ws.on('close', cleanup)
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error)
+      cleanup()
+    })
+
+    // Send periodic heartbeat
+    const heartbeatInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'heartbeat',
+            timestamp: new Date().toISOString(),
+          }))
+        } catch (error) {
+          cleanup()
+        }
+      } else {
+        cleanup()
+      }
+    }, 30000) // Every 30 seconds
+  })
+
+  return wss
 }
 
 export default router

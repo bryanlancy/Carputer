@@ -20,7 +20,7 @@ import healthRoutes from './routes/health';
 import imageRoutes from './routes/images';
 import verifiedImageRoutes from './routes/verifiedImages';
 import notificationRoutes from './routes/notifications';
-import realtimeRoutes, { broadcastDeviceUpdate, broadcastNotification } from './routes/realtime';
+import realtimeRoutes, { broadcastDeviceUpdate, broadcastNotification, createWebSocketServer } from './routes/realtime';
 import { setBroadcastFunctions, DeviceStatusService } from './services/deviceStatus';
 
 // Initialize Express app
@@ -219,6 +219,10 @@ const server = app.listen(PORT, HOST, () => {
 server.keepAliveTimeout = 65000; // 65 seconds
 server.headersTimeout = 66000; // 66 seconds (should be > keepAliveTimeout)
 server.maxConnections = 1000;
+
+// Initialize WebSocket server
+createWebSocketServer(server);
+console.log('WebSocket server initialized on /api/realtime/ws');
 
 // Type augmentation for Express Request
 declare global {
