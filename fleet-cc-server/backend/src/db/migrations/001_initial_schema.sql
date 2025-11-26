@@ -73,9 +73,12 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- Drop triggers if they exist, then create them
+DROP TRIGGER IF EXISTS update_devices_updated_at ON devices;
 CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_commands_updated_at ON commands;
 CREATE TRIGGER update_commands_updated_at BEFORE UPDATE ON commands
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
