@@ -5,7 +5,6 @@ import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
 import { getApiUrl } from '../utils/api'
 import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
-import { useNotifications } from '../contexts/NotificationContext'
 
 interface Device {
   id: number
@@ -33,7 +32,6 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('status')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const { addNotification } = useNotifications()
 
   // Handle WebSocket messages
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
@@ -53,27 +51,8 @@ export default function DevicesPage() {
           return [...prevDevices, device]
         }
       })
-
-      // Show notification if device status changed
-      if (message.notification) {
-        const notificationType = device.status === 'online' ? 'online' : 'offline'
-        addNotification({
-          title: message.notification.title || `${device.hostname || device.device_id} ${device.status}`,
-          message: message.notification.message || `${device.hostname || device.device_id} is now ${device.status}`,
-          type: notificationType,
-        })
-      }
-    } else if (message.type === 'notification' && message.notification) {
-      // Show standalone notification
-      const notification = message.notification
-      const notificationType = notification.notification_type?.type_code?.includes('online') ? 'online' : 'offline'
-      addNotification({
-        title: notification.title || 'Device notification',
-        message: notification.message || 'Device status changed',
-        type: notificationType,
-      })
     }
-  }, [addNotification])
+  }, [])
 
   // Subscribe to WebSocket updates
   const { connected } = useWebSocket(handleWebSocketMessage, ['devices'])

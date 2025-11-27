@@ -5,7 +5,6 @@ import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
 import { getApiUrl } from '../utils/api'
 import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
-import { useNotifications } from '../contexts/NotificationContext'
 
 interface Device {
 	id: number
@@ -48,72 +47,29 @@ export default function ImagesPage() {
 	const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 	const [expandedImage, setExpandedImage] = useState<string | null>(null)
 	const [verifying, setVerifying] = useState<string | null>(null)
-	const { addNotification } = useNotifications()
 
 	// Handle WebSocket messages
-	const handleWebSocketMessage = useCallback(
-		(message: WebSocketMessage) => {
-			if (message.type === 'image_update' && message.image) {
-				const image = message.image as Image
+	const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+		if (message.type === 'image_update' && message.image) {
+			const image = message.image as Image
 
-				// Update image in state
-				setImages(prevImages => {
-					const imageIndex = prevImages.findIndex(
-						img => img.image_build_hash === image.image_build_hash
-					)
-					if (imageIndex >= 0) {
-						// Update existing image
-						const updated = [...prevImages]
-						updated[imageIndex] = image
-						return updated
-					} else {
-						// Add new image
-						return [...prevImages, image]
-					}
-				})
-
-				// Show notification if provided
-				if (message.notification) {
-					const notificationType = image.verified
-						? 'success'
-						: 'warning'
-					addNotification({
-						title: message.notification.title || 'Image Updated',
-						message:
-							message.notification.message ||
-							`Image ${
-								image.build_id ||
-								image.image_build_hash.substring(0, 8)
-							} has been updated`,
-						type: notificationType,
-					})
+			// Update image in state
+			setImages(prevImages => {
+				const imageIndex = prevImages.findIndex(
+					img => img.image_build_hash === image.image_build_hash
+				)
+				if (imageIndex >= 0) {
+					// Update existing image
+					const updated = [...prevImages]
+					updated[imageIndex] = image
+					return updated
+				} else {
+					// Add new image
+					return [...prevImages, image]
 				}
-			} else if (
-				message.type === 'notification' &&
-				message.notification
-			) {
-				// Show standalone notification
-				const notification = message.notification
-				const notificationType =
-					notification.notification_type?.type_code?.includes(
-						'verified'
-					)
-						? 'success'
-						: notification.notification_type?.type_code?.includes(
-								'unverified'
-						  )
-						? 'warning'
-						: 'info'
-
-				addNotification({
-					title: notification.title || 'Image Notification',
-					message: notification.message || 'Image status changed',
-					type: notificationType,
-				})
-			}
-		},
-		[addNotification]
-	)
+			})
+		}
+	}, [])
 
 	// Subscribe to WebSocket updates
 	const { connected } = useWebSocket(handleWebSocketMessage, ['images'])
@@ -216,29 +172,9 @@ export default function ImagesPage() {
 					const data = await imagesResponse.json()
 					setImages(data.images || [])
 				}
-				// Show success notification
-				addNotification({
-					title: 'Image Verified',
-					message: `Image ${buildHash.substring(
-						0,
-						8
-					)} has been verified`,
-					type: 'success',
-				})
-			} else {
-				addNotification({
-					title: 'Verification Failed',
-					message: 'Failed to verify image',
-					type: 'error',
-				})
 			}
 		} catch (error) {
 			console.error('Failed to verify image:', error)
-			addNotification({
-				title: 'Verification Failed',
-				message: 'An error occurred while verifying the image',
-				type: 'error',
-			})
 		} finally {
 			setVerifying(null)
 		}
