@@ -7,12 +7,9 @@ import styles from './NotificationFeed.module.scss'
 export function NotificationFeed() {
   const { notifications, removeNotification } = useNotifications()
 
-  if (notifications.length === 0) {
-    return null
-  }
-
+  // Always render the container, even if empty, to ensure it's in the DOM
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-testid="notification-feed">
       {notifications.map((notification) => (
         <NotificationPopup
           key={notification.id}

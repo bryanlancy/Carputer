@@ -2,8 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import './globals.scss'
 import styles from './layout.module.scss'
-import { NotificationProvider } from './contexts/NotificationContext'
-import { NotificationFeed } from './components/NotificationFeed'
+import { NotificationProviderWrapper } from './components/NotificationProviderWrapper'
 
 export const metadata: Metadata = {
 	title: 'Fleet Command & Control',
@@ -18,7 +17,7 @@ export default function RootLayout({
 	return (
 		<html lang='en'>
 			<body>
-				<NotificationProvider>
+				<NotificationProviderWrapper>
 					<nav className={styles.nav}>
 						<div className={styles.navContainer}>
 							<Link href='/' className={styles.navBrand}>
@@ -41,8 +40,7 @@ export default function RootLayout({
 						</div>
 					</nav>
 					{children}
-					<NotificationFeed />
-				</NotificationProvider>
+				</NotificationProviderWrapper>
 			</body>
 		</html>
 	)

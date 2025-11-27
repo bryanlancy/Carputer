@@ -3,13 +3,15 @@
   max-width: 400px;
   padding: 16px;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: flex-start;
   gap: 12px;
   animation: slideIn 0.3s ease-out;
   cursor: pointer;
   transition: transform 0.2s ease;
+  position: relative;
+  z-index: 10000; /* Ensure individual notifications are above everything */
 
   &:hover {
     transform: translateY(-2px);

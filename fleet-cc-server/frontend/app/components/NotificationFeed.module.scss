@@ -1,18 +1,26 @@
 .container {
-	position: fixed;
-	bottom: 20px;
-	right: 20px;
-	z-index: 1000;
+	position: fixed !important; /* Force fixed positioning */
+	bottom: 20px !important;
+	right: 20px !important;
+	z-index: 99999 !important; /* Extremely high z-index to ensure it's above all other elements */
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
 	max-height: calc(100vh - 40px);
 	overflow-y: auto;
+	overflow-x: hidden;
 	align-items: flex-end;
 	pointer-events: none;
+	/* Ensure it's always visible */
+	visibility: visible !important;
+	opacity: 1 !important;
+	/* Ensure it's not hidden by parent elements */
+	isolation: isolate;
+	transform: translateZ(0); /* Force hardware acceleration */
 
 	& > * {
 		pointer-events: auto;
+		position: relative;
 	}
 }
 
