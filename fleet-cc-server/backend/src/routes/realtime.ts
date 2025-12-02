@@ -1,13 +1,21 @@
 import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
+import { verifyToken } from '../middleware/auth'
+import { prisma } from '../db/prisma'
 
 const router = express.Router()
 
 // Store active SSE connections
 const sseConnections = new Set<express.Response>()
 
-// Store active WebSocket connections
-const wsConnections = new Set<WebSocket>()
+// Store active WebSocket connections with user info
+interface WebSocketConnection {
+  ws: WebSocket
+  userId?: string
+  userRoles?: string[]
+}
+
+const wsConnections = new Map<WebSocket, WebSocketConnection>()
 
 // Broadcast to all connected clients (both SSE and WebSocket)
 function broadcast(data: any) {
@@ -28,17 +36,36 @@ function broadcast(data: any) {
   })
 
   // Broadcast to WebSocket connections
-  wsConnections.forEach((ws) => {
+  wsConnections.forEach((conn) => {
     try {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(jsonData)
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(jsonData)
       } else {
         // Connection closed, remove it
-        wsConnections.delete(ws)
+        wsConnections.delete(conn.ws)
       }
     } catch (error) {
       // Connection closed, remove it
-      wsConnections.delete(ws)
+      wsConnections.delete(conn.ws)
+    }
+  })
+}
+
+/**
+ * Broadcast notification to specific user
+ */
+function broadcastToUser(userId: string, data: any) {
+  const jsonData = JSON.stringify(data, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  )
+
+  wsConnections.forEach((conn) => {
+    if (conn.userId === userId && conn.ws.readyState === WebSocket.OPEN) {
+      try {
+        conn.ws.send(jsonData)
+      } catch (error) {
+        wsConnections.delete(conn.ws)
+      }
     }
   })
 }
@@ -53,8 +80,8 @@ function cleanup() {
   })
 
   // Clean up WebSocket connections
-  wsConnections.forEach((ws) => {
-    if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) {
+  wsConnections.forEach((conn, ws) => {
+    if (conn.ws.readyState !== WebSocket.OPEN && conn.ws.readyState !== WebSocket.CONNECTING) {
       wsConnections.delete(ws)
     }
   })
@@ -64,9 +91,26 @@ function cleanup() {
 setInterval(cleanup, 30000)
 
 /**
- * Server-Sent Events endpoint for realtime device updates
- * Clients can subscribe to this endpoint to receive realtime updates
- * about device status changes, new notifications, etc.
+ * @swagger
+ * /api/realtime/devices:
+ *   get:
+ *     summary: Server-Sent Events endpoint for realtime device updates
+ *     description: Clients can subscribe to this endpoint to receive realtime updates about device status changes, new notifications, etc. Uses Server-Sent Events (SSE) protocol.
+ *     tags: [Realtime]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: SSE stream connection established
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: Server-Sent Events stream
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/devices', (req, res) => {
   // Set headers for SSE
@@ -153,13 +197,28 @@ export function broadcastDeviceUpdate(device: any, notification?: any) {
 
 /**
  * Broadcast notification update
+ * If notification has user_notifications, also send to specific users
  */
 export function broadcastNotification(notification: any) {
+  // Broadcast to all (for backward compatibility)
   broadcast({
     type: 'notification',
     notification,
     timestamp: new Date().toISOString(),
   })
+
+  // If notification has user_notifications, also send to specific users
+  if (notification.user_notifications && Array.isArray(notification.user_notifications)) {
+    notification.user_notifications.forEach((un: any) => {
+      if (un.user_id) {
+        broadcastToUser(un.user_id, {
+          type: 'notification',
+          notification,
+          timestamp: new Date().toISOString(),
+        })
+      }
+    })
+  }
 }
 
 /**
@@ -194,30 +253,90 @@ export function createWebSocketServer(server: any) {
 
   // Handle HTTP upgrade requests
   server.on('upgrade', (request: any, socket: any, head: Buffer) => {
-    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname
+    try {
+      const pathname = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`).pathname
 
-    if (pathname === '/api/realtime/ws') {
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        wss.emit('connection', ws, request)
-      })
-    } else {
+      if (pathname === '/api/realtime/ws') {
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          wss.emit('connection', ws, request)
+        })
+      } else {
+        socket.destroy()
+      }
+    } catch (error) {
+      console.error('WebSocket upgrade error:', error)
       socket.destroy()
     }
   })
 
-  wss.on('connection', (ws: WebSocket, req: any) => {
+  wss.on('connection', async (ws: WebSocket, req: any) => {
     console.log('WebSocket client connected')
-    wsConnections.add(ws)
 
-    // Parse query params for channels
+    // Parse query params for channels and token
     const url = new URL(req.url || '', 'http://localhost')
     const channels = url.searchParams.get('channels')?.split(',') || []
+    const token = url.searchParams.get('token') || req.headers.authorization?.replace('Bearer ', '')
+
+    let userId: string | undefined
+    let userRoles: string[] = []
+
+    // Require authentication for WebSocket connections
+    if (!token) {
+      console.warn('WebSocket connection rejected: No token provided')
+      ws.close(1008, 'Authentication required')
+      return
+    }
+
+    try {
+      const decoded = await verifyToken(token)
+      if (!decoded || !decoded.sub) {
+        console.warn('WebSocket connection rejected: Invalid token')
+        ws.close(1008, 'Invalid token')
+        return
+      }
+
+      try {
+        const user = await prisma.user.findUnique({
+          where: { supabase_user_id: decoded.sub },
+          include: {
+            user_roles: true,
+          },
+        })
+
+        if (!user) {
+          console.warn('WebSocket connection rejected: User not found')
+          ws.close(1008, 'User not found')
+          return
+        }
+
+        userId = user.id
+        userRoles = user.user_roles.map(ur => ur.role)
+        console.log(`WebSocket authenticated user: ${user.email}`)
+      } catch (dbError) {
+        console.error('WebSocket user lookup failed:', dbError)
+        ws.close(1011, 'Database error')
+        return
+      }
+    } catch (error) {
+      console.warn('WebSocket authentication failed:', error)
+      ws.close(1008, 'Authentication failed')
+      return
+    }
+
+    // Store connection with user info
+    wsConnections.set(ws, {
+      ws,
+      userId,
+      userRoles,
+    })
 
     // Send initial connection message
     try {
       ws.send(JSON.stringify({
         type: 'connected',
         channels,
+        authenticated: !!userId,
+        userId,
         timestamp: new Date().toISOString(),
       }))
     } catch (error) {
@@ -242,12 +361,16 @@ export function createWebSocketServer(server: any) {
       }
     })
 
+    // Send periodic heartbeat
+    let heartbeatInterval: NodeJS.Timeout | null = null
+
     // Handle client disconnect
     const cleanup = () => {
       console.log('WebSocket client disconnected')
       wsConnections.delete(ws)
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval)
+        heartbeatInterval = null
       }
     }
 
@@ -258,8 +381,8 @@ export function createWebSocketServer(server: any) {
       cleanup()
     })
 
-    // Send periodic heartbeat
-    const heartbeatInterval = setInterval(() => {
+    // Start periodic heartbeat
+    heartbeatInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({
@@ -276,6 +399,17 @@ export function createWebSocketServer(server: any) {
   })
 
   return wss
+}
+
+/**
+ * Broadcast notification to specific user by ID
+ */
+export function broadcastNotificationToUser(userId: string, notification: any) {
+  broadcastToUser(userId, {
+    type: 'notification',
+    notification,
+    timestamp: new Date().toISOString(),
+  })
 }
 
 export default router
