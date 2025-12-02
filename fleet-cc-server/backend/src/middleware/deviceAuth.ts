@@ -83,7 +83,7 @@ export async function verifyDeviceAuthorized(
 
     // Attach device info to request
     req.deviceId = device.device_id;
-    req.macAddress = device.mac_address;
+    req.macAddress = device.mac_address || undefined;
     req.deviceDbId = device.id;
     req.deviceAuthorized = device.authorized;
 
