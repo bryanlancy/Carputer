@@ -4,9 +4,9 @@ services:
         image: postgres:15-alpine
         container_name: fleet-cc-postgres
         environment:
-            POSTGRES_DB: ${POSTGRES_DB:-fleet_cc}
-            POSTGRES_USER: ${POSTGRES_USER:-postgres}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_HOST_AUTH_METHOD: md5
             PGDATA: /var/lib/postgresql/data/pgdata
         volumes:
@@ -14,7 +14,7 @@ services:
         ports:
             - '5432:5432'
         healthcheck:
-            test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+            test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
             interval: 10s
             timeout: 5s
             retries: 5
@@ -29,13 +29,13 @@ services:
             - '8080:8080'
         environment:
             PORT: 8080
-            SUPABASE_URL: ${SUPABASE_URL:-http://localhost:8000}
+            SUPABASE_URL: ${SUPABASE_URL}
             STUDIO_PG_META_URL: http://meta:8080
             POSTGRES_HOST: postgres
             POSTGRES_PORT: 5432
-            POSTGRES_DB: ${POSTGRES_DB:-fleet_cc}
-            POSTGRES_USER: ${POSTGRES_USER:-postgres}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
         depends_on:
             postgres:
                 condition: service_healthy
@@ -54,9 +54,9 @@ services:
             PG_META_PORT: 8080
             PG_META_DB_HOST: postgres
             PG_META_DB_PORT: 5432
-            PG_META_DB_NAME: ${POSTGRES_DB:-fleet_cc}
-            PG_META_DB_USER: ${POSTGRES_USER:-postgres}
-            PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            PG_META_DB_NAME: ${POSTGRES_DB}
+            PG_META_DB_USER: ${POSTGRES_USER}
+            PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
         depends_on:
             postgres:
                 condition: service_healthy
@@ -69,17 +69,18 @@ services:
         container_name: fleet-cc-auth
         ports:
             - '9999:9999'
+        env_file:
+            - ./backend/.env
         environment:
             GOTRUE_API_HOST: 0.0.0.0
             GOTRUE_API_PORT: 9999
+            API_EXTERNAL_URL: ${API_EXTERNAL_URL}
             GOTRUE_DB_DRIVER: postgres
-            GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-fleet_cc}
-            GOTRUE_SITE_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
-            GOTRUE_URI_ALLOW_LIST: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+            GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?search_path=auth
+            GOTRUE_SITE_URL: ${NEXT_PUBLIC_API_URL}
+            GOTRUE_URI_ALLOW_LIST: ${NEXT_PUBLIC_API_URL}
             GOTRUE_DISABLE_SIGNUP: false
-            GOTRUE_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
-            GOTRUE_JWT_EXP: 3600
-            GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+            GOTRUE_JWT_SECRET: ${JWT_SECRET}
         depends_on:
             postgres:
                 condition: service_healthy
@@ -98,14 +99,14 @@ services:
             PORT: 4000
             DB_HOST: postgres
             DB_PORT: 5432
-            DB_USER: ${POSTGRES_USER:-postgres}
-            DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-            DB_NAME: ${POSTGRES_DB:-fleet_cc}
+            DB_USER: ${POSTGRES_USER}
+            DB_PASSWORD: ${POSTGRES_PASSWORD}
+            DB_NAME: ${POSTGRES_DB}
             DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
-            DB_ENC_KEY: supabaserealtime
-            API_JWT_SECRET: ${JWT_SECRET:-d42294a923ee000ed0ed06be995d42fe342f2982d6ffb8fc92a46b326090856d}
-            SECRET_KEY_BASE: ${JWT_SECRET:-d42294a923ee000ed0ed06be995d42fe342f2982d6ffb8fc92a46b326090856d}
-            SECURE_CHANNELS: 'true'
+            DB_ENC_KEY: ${DB_ENC_KEY}
+            API_JWT_SECRET: ${JWT_SECRET}
+            SECRET_KEY_BASE: ${JWT_SECRET}
+            SECURE_CHANNELS: ${SECURE_CHANNELS}
         depends_on:
             postgres:
                 condition: service_healthy
@@ -121,18 +122,19 @@ services:
         env_file:
             - ./backend/.env
         ports:
-            - '${API_PORT:-3001}:3001'
+            - '${API_PORT}:3001'
         environment:
-            NODE_ENV: ${NODE_ENV:-development}
+            NODE_ENV: ${NODE_ENV}
             PORT: 3001
-            DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-fleet_cc}
-            SUPABASE_URL: ${SUPABASE_URL:-http://localhost:8000}
-            SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-            JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
-            SESSION_SECRET: ${SESSION_SECRET:-your-super-secret-session-token}
-            RSYNC_TARGET_PATH: ${RSYNC_TARGET_PATH:-/var/fleet-data}
-            HQ_WIFI_SSID: ${HQ_WIFI_SSID:-HQNetwork}
-            DEVICE_REGISTRATION_TOKEN: ${DEVICE_REGISTRATION_TOKEN:-}
+            DOCKER_ENV: "true"
+            DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+            SUPABASE_URL: ${SUPABASE_URL}
+            SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+            JWT_SECRET: ${JWT_SECRET}
+            SESSION_SECRET: ${SESSION_SECRET}
+            RSYNC_TARGET_PATH: ${RSYNC_TARGET_PATH}
+            HQ_WIFI_SSID: ${HQ_WIFI_SSID}
+            DEVICE_REGISTRATION_TOKEN: ${DEVICE_REGISTRATION_TOKEN}
         volumes:
             - ./backend:/app
             - backend_node_modules:/app/node_modules
@@ -158,10 +160,12 @@ services:
         ports:
             - '3000:3000'
         environment:
-            NODE_ENV: ${NODE_ENV:-development}
-            NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
-            NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:8000}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+            NODE_ENV: ${NODE_ENV}
+            DOCKER_ENV: 'true'
+            # Note: NEXT_PUBLIC_* variables are loaded from ./frontend/.env via env_file above
+            NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+            NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         volumes:
             - ./frontend:/app
             - frontend_node_modules:/app/node_modules

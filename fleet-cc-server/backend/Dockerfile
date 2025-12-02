@@ -1,5 +1,8 @@
-FROM node:20-slim AS base
-# Debian-based image has better Prisma/OpenSSL compatibility than Alpine
+FROM node:20-bullseye-slim AS base
+# Use bullseye (Debian 11) which has OpenSSL 1.1 by default
+# This avoids compatibility issues with Prisma which requires libssl1.1
+# Ensure libssl1.1 is installed
+RUN apt-get update && apt-get install -y libssl1.1 && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies only when needed
 FROM base AS deps

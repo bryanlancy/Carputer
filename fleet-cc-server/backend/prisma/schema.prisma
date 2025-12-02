@@ -3,7 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
 }
 
 datasource db {
@@ -174,11 +174,119 @@ model Notification {
   read_at             DateTime?
   created_at          DateTime        @default(now())
 
+  // Relations
+  user_notifications   UserNotification[]
+
   @@index([device_id])
   @@index([notification_type_id])
   @@index([device_log_id])
   @@index([read])
   @@index([created_at])
   @@map("notifications")
+}
+
+model User {
+  id                  String          @id @default(uuid()) @db.Uuid
+  email               String          @unique @db.VarChar(255)
+  full_name           String?         @db.VarChar(255)
+  avatar_url          String?         @db.Text
+  supabase_user_id    String          @unique @db.Uuid
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  user_roles          UserRole[]
+  user_notifications  UserNotification[]
+  notification_preferences UserNotificationPreferences?
+
+  @@index([supabase_user_id])
+  @@index([email])
+  @@map("users")
+}
+
+model UserRole {
+  id                  Int             @id @default(autoincrement())
+  user_id             String          @db.Uuid
+  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role                String          @db.VarChar(50) // admin, operator, viewer
+  created_at          DateTime        @default(now())
+
+  @@unique([user_id, role])
+  @@index([user_id])
+  @@index([role])
+  @@map("user_roles")
+}
+
+model UserNotification {
+  id                  Int             @id @default(autoincrement())
+  user_id             String          @db.Uuid
+  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  notification_id     Int
+  notification        Notification    @relation(fields: [notification_id], references: [id], onDelete: Cascade)
+  viewed              Boolean         @default(false)
+  viewed_at           DateTime?
+  created_at          DateTime        @default(now())
+
+  @@unique([user_id, notification_id], name: "user_notification_unique")
+  @@index([user_id])
+  @@index([notification_id])
+  @@index([viewed])
+  @@map("user_notifications")
+}
+
+model NotificationRule {
+  id                  Int             @id @default(autoincrement())
+  name                String          @db.VarChar(255)
+  description         String?        @db.Text
+  trigger_type        String          @db.VarChar(50) // date_time, backend_event, user_driven
+  trigger_config      Json
+  notification_type_code String       @db.VarChar(100) // Reference to NotificationType.type_code (manual relation)
+  target_users        Json?           // Array of user IDs or role names, null means all users
+  enabled             Boolean         @default(true)
+  priority            Int             @default(0)
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  triggers            NotificationTrigger[]
+
+  @@index([enabled])
+  @@index([trigger_type])
+  @@index([priority])
+  @@index([notification_type_code])
+  @@map("notification_rules")
+}
+
+model NotificationTrigger {
+  id                  Int             @id @default(autoincrement())
+  rule_id             Int?
+  rule                NotificationRule? @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  trigger_type        String          @db.VarChar(50) // date_time, backend_event, user_driven
+  trigger_config      Json
+  scheduled_at        DateTime?
+  executed_at         DateTime?
+  status              String          @default("pending") @db.VarChar(50) // pending, executed, failed, cancelled
+  error_message       String?         @db.Text
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  @@index([rule_id])
+  @@index([status])
+  @@index([scheduled_at])
+  @@map("notification_triggers")
+}
+
+model UserNotificationPreferences {
+  id                  Int             @id @default(autoincrement())
+  user_id             String          @unique @db.Uuid
+  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  auto_read            Boolean         @default(false)
+  enabled_notification_types Json?    // Array of notification type codes
+  urgency_filters     Json?           // Array of urgency levels
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  @@index([user_id])
+  @@map("user_notification_preferences")
 }
 
