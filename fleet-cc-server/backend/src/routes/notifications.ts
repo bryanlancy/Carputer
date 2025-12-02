@@ -1,8 +1,12 @@
 import express from 'express'
 import { z } from 'zod'
 import { NotificationService } from '../services/notification'
+import { optionalAuth, requireAuth } from '../middleware/auth'
 
 const router = express.Router()
+
+// Apply optional authentication to all routes (for backward compatibility)
+router.use(optionalAuth)
 
 /**
  * @swagger
@@ -11,6 +15,8 @@ const router = express.Router()
  *     summary: Get all notifications
  *     description: Returns a list of all notifications, optionally filtered by device, type, or read status
  *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: unreadOnly
@@ -62,6 +68,8 @@ const router = express.Router()
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Notification'
+ *       401:
+ *         description: Unauthorized
  *       500:
  *         description: Internal server error
  *         content:
@@ -119,6 +127,8 @@ router.get('/', async (req, res) => {
  *     summary: Get notifications for a specific device
  *     description: Returns all notifications for a specific device
  *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: deviceId
@@ -225,6 +235,8 @@ router.get('/device/:deviceId', async (req, res) => {
  *     summary: Mark a notification as read
  *     description: Marks a specific notification as read
  *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: notificationId
@@ -285,6 +297,8 @@ router.post('/:notificationId/read', async (req, res) => {
  *     summary: Mark all notifications as read for a device
  *     description: Marks all unread notifications for a specific device as read
  *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: deviceId
@@ -353,6 +367,8 @@ router.post('/device/:deviceId/read-all', async (req, res) => {
  *     summary: Get unread notification count
  *     description: Returns the total count of unread notifications across all devices, optionally filtered by device
  *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: deviceId
@@ -410,6 +426,448 @@ router.get('/unread-count', async (req, res) => {
 		res.json({ count })
 	} catch (error) {
 		console.error('Get unread count error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me:
+ *   get:
+ *     summary: Get current user's notifications
+ *     description: Returns notifications for the authenticated user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: unviewedOnly
+ *         schema:
+ *           type: boolean
+ *         description: Return only unviewed notifications
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Maximum number of notifications to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of notifications to skip
+ *     responses:
+ *       200:
+ *         description: List of user notifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Notification'
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/user/me', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const unviewedOnly = req.query.unviewedOnly === 'true'
+		const limit = req.query.limit
+			? parseInt(req.query.limit as string, 10)
+			: 100
+		const offset = req.query.offset
+			? parseInt(req.query.offset as string, 10)
+			: 0
+
+		const notifications = await notificationService.getUserNotifications(
+			req.user.id,
+			{
+				unviewedOnly,
+				limit,
+				offset,
+				orderBy: 'created_at',
+				order: 'desc',
+			}
+		)
+
+		const jsonString = JSON.stringify(notifications, (key, value) =>
+			typeof value === 'bigint' ? value.toString() : value
+		)
+
+		res.setHeader('Content-Type', 'application/json')
+		res.send(jsonString)
+	} catch (error) {
+		console.error('Get user notifications error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me/unread-count:
+ *   get:
+ *     summary: Get current user's unviewed notification count
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Unviewed notification count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/user/me/unread-count', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const count = await notificationService.getUnviewedCountForUser(req.user.id)
+
+		res.json({ count })
+	} catch (error) {
+		console.error('Get user unviewed count error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/{notificationId}/view:
+ *   post:
+ *     summary: Mark notification as viewed by current user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification marked as viewed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Notification'
+ *       400:
+ *         description: Invalid notification ID
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Notification not found for user
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/:notificationId/view', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const notificationId = parseInt(req.params.notificationId, 10)
+
+		if (isNaN(notificationId)) {
+			return res.status(400).json({ error: 'Invalid notification ID' })
+		}
+
+		const result = await notificationService.markAsViewedByUser(
+			notificationId,
+			req.user.id
+		)
+
+		res.json(result)
+	} catch (error: any) {
+		if (error.code === 'P2025') {
+			return res.status(404).json({ error: 'Notification not found for user' })
+		}
+		console.error('Mark notification as viewed error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me/view-all:
+ *   post:
+ *     summary: Mark all notifications as viewed for current user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All notifications marked as viewed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
+ *                   description: Number of notifications marked as viewed
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/user/me/view-all', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const result = await notificationService.markAllAsViewedByUser(req.user.id)
+
+		res.json(result)
+	} catch (error) {
+		console.error('Mark all notifications as viewed error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me/preferences:
+ *   get:
+ *     summary: Get current user's notification preferences
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User notification preferences
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 user_id:
+ *                   type: string
+ *                 auto_read:
+ *                   type: boolean
+ *                 enabled_notification_types:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   nullable: true
+ *                 urgency_filters:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   nullable: true
+ *                 created_at:
+ *                   type: string
+ *                   format: date-time
+ *                 updated_at:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/user/me/preferences', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		let preferences = await prisma.userNotificationPreferences.findUnique({
+			where: { user_id: req.user.id },
+		})
+
+		// Create default preferences if none exist
+		if (!preferences) {
+			try {
+				// First ensure user exists in database
+				const user = await prisma.user.findUnique({
+					where: { id: req.user.id },
+				})
+
+				if (!user) {
+					// User doesn't exist - return default preferences without saving
+					return res.json({
+						id: 0,
+						user_id: req.user.id,
+						auto_read: false,
+						enabled_notification_types: null,
+						urgency_filters: null,
+						created_at: new Date(),
+						updated_at: new Date(),
+					})
+				}
+
+				preferences = await prisma.userNotificationPreferences.create({
+					data: {
+						user_id: req.user.id,
+						auto_read: false,
+						enabled_notification_types: undefined,
+						urgency_filters: undefined,
+					},
+				})
+			} catch (createError: any) {
+				// If creation fails, return default preferences
+				console.error('Failed to create preferences:', createError)
+				return res.json({
+					id: 0,
+					user_id: req.user.id,
+					auto_read: false,
+					enabled_notification_types: null,
+					urgency_filters: null,
+					created_at: new Date(),
+					updated_at: new Date(),
+				})
+			}
+		}
+
+		res.json(preferences)
+	} catch (error: any) {
+		console.error('Get user preferences error:', error)
+		// Return a default response instead of error to prevent empty response
+		if (!res.headersSent) {
+			res.status(500).json({
+				error: 'Internal server error',
+				message: error?.message || 'Unknown error'
+			})
+		}
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me/preferences:
+ *   put:
+ *     summary: Update current user's notification preferences
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               auto_read:
+ *                 type: boolean
+ *                 description: Automatically mark notifications as read
+ *               enabled_notification_types:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 nullable: true
+ *                 description: Array of enabled notification type codes (null for all)
+ *               urgency_filters:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 nullable: true
+ *                 description: Array of urgency levels to filter (null for all)
+ *     responses:
+ *       200:
+ *         description: Preferences updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 user_id:
+ *                   type: string
+ *                 auto_read:
+ *                   type: boolean
+ *                 enabled_notification_types:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   nullable: true
+ *                 urgency_filters:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   nullable: true
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+const updatePreferencesSchema = z.object({
+	auto_read: z.boolean().optional(),
+	enabled_notification_types: z.array(z.string()).optional().nullable(),
+	urgency_filters: z.array(z.string()).optional().nullable(),
+})
+
+router.put('/user/me/preferences', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const data = updatePreferencesSchema.parse(req.body)
+
+		const preferences = await prisma.userNotificationPreferences.upsert({
+			where: { user_id: req.user.id },
+			create: {
+				user_id: req.user.id,
+				auto_read: data.auto_read || false,
+				enabled_notification_types: data.enabled_notification_types || undefined,
+				urgency_filters: data.urgency_filters || undefined,
+			},
+			update: {
+				...(data.auto_read !== undefined && { auto_read: data.auto_read }),
+				...(data.enabled_notification_types !== undefined && {
+					enabled_notification_types: data.enabled_notification_types !== null ? data.enabled_notification_types : undefined,
+				}),
+				...(data.urgency_filters !== undefined && {
+					urgency_filters: data.urgency_filters !== null ? data.urgency_filters : undefined,
+				}),
+			},
+		})
+
+		res.json(preferences)
+	} catch (error: any) {
+		if (error instanceof z.ZodError) {
+			res.status(400).json({ error: 'Validation error', details: error.errors })
+			return
+		}
+		console.error('Update user preferences error:', error)
 		res.status(500).json({ error: 'Internal server error' })
 	}
 })
