@@ -29,6 +29,8 @@ const markVerifiedSchema = z.object({
  *     summary: Get all images with device counts
  *     description: Returns all images with device counts. Supports filtering by unknown status and active status.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: includeUnverified
@@ -56,6 +58,8 @@ const markVerifiedSchema = z.object({
  *                     $ref: '#/components/schemas/Image'
  *                 count:
  *                   type: integer
+ *       401:
+ *         description: Unauthorized
  *       500:
  *         description: Internal server error
  *         content:
@@ -92,6 +96,8 @@ router.get('/', async (req, res) => {
  *     summary: Get image by build hash with device list
  *     description: Returns image details with list of devices using this image.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildHash
@@ -106,6 +112,8 @@ router.get('/', async (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Image'
+ *       401:
+ *         description: Unauthorized
  *       404:
  *         description: Image not found
  *         content:
@@ -145,6 +153,8 @@ router.get('/:buildHash', async (req, res) => {
  *     summary: Add or update a verified image
  *     description: Adds a carputer image to the verified images list, allowing devices running this image to automatically register.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -258,6 +268,8 @@ router.post('/', async (req, res) => {
  *     summary: Mark an image as verified
  *     description: Marks an unknown image as verified, allowing devices to auto-authorize. Also auto-authorizes devices using this image.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildHash
@@ -379,6 +391,8 @@ router.patch('/:buildHash/verify', async (req, res) => {
  *     summary: Deactivate an image
  *     description: Deactivates an image, preventing new devices from registering with this image. Existing devices are not affected.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildHash

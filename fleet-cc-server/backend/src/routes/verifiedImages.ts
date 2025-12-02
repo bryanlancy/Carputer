@@ -22,6 +22,8 @@ const addVerifiedImageSchema = z.object({
  *     summary: Add a verified image (Legacy)
  *     description: Adds a carputer image to the verified images list, allowing devices running this image to automatically register. This is a legacy endpoint - use /api/images instead.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -114,6 +116,8 @@ router.post('/', async (req, res) => {
  *     summary: Get all verified images (Legacy)
  *     description: Returns all verified images (active and inactive). This is a legacy endpoint - use /api/images instead.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: activeOnly
@@ -167,6 +171,8 @@ router.get('/', async (req, res) => {
  *     summary: Get verified image by build hash (Legacy)
  *     description: Returns a verified image by its build hash. This is a legacy endpoint - use /api/images/{buildHash} instead.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildHash
@@ -220,6 +226,8 @@ router.get('/:buildHash', async (req, res) => {
  *     summary: Deactivate a verified image (Legacy)
  *     description: Deactivates a verified image, preventing new devices from registering with this image. Existing devices are not affected. This is a legacy endpoint - use /api/images/{buildHash} instead.
  *     tags: [Images]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildHash
