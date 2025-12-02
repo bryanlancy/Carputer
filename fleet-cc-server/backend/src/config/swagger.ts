@@ -6,7 +6,7 @@ const options: swaggerJsdoc.Options = {
     info: {
       title: 'Fleet Command & Control API',
       version: '1.0.0',
-      description: 'API documentation for the Fleet Command & Control server. This API manages carputer devices, images, commands, and metrics.',
+      description: 'API documentation for the Fleet Command & Control server. This API manages carputer devices, images, commands, and metrics.\n\n**Authentication**: Most endpoints require a JWT Bearer token. Get your token by logging in via the frontend or directly via GoTrue at `/auth/v1/token?grant_type=password`.\n\n**Postman Import**: Import this API into Postman by using the OpenAPI JSON at `/api-docs/swagger.json`.',
       contact: {
         name: 'API Support',
       },
@@ -19,17 +19,23 @@ const options: swaggerJsdoc.Options = {
     ],
     components: {
       securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'JWT token obtained from Supabase Auth (GoTrue). Get token by logging in at /login or via POST /auth/v1/token?grant_type=password',
+        },
         deviceAuth: {
           type: 'apiKey',
           in: 'header',
           name: 'x-device-mac',
-          description: 'Device authentication using MAC address',
+          description: 'Device authentication using MAC address (for device endpoints only)',
         },
         deviceIdAuth: {
           type: 'apiKey',
           in: 'header',
           name: 'x-device-id',
-          description: 'Device authentication using device ID',
+          description: 'Device authentication using device ID (for device endpoints only)',
         },
       },
       schemas: {

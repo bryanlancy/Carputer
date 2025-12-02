@@ -9,7 +9,15 @@ const router = express.Router()
  *     summary: Get fleet overview metrics
  *     description: Returns fleet-wide metrics including device counts by status, version distribution, command statistics, and recent activity.
  *     tags: [Metrics]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       200:
  *         description: Fleet metrics
  *         content:
@@ -26,6 +34,10 @@ const router = express.Router()
 router.get('/overview', async (req, res) => {
 	try {
 		const prisma = req.prisma
+
+		if (!prisma) {
+			return res.status(500).json({ error: 'Database connection not available' })
+		}
 
 		// Get device counts by status
 		const statusCounts = await prisma.device.groupBy({
@@ -100,9 +112,14 @@ router.get('/overview', async (req, res) => {
 				),
 			},
 		})
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Get metrics error:', error)
-		res.status(500).json({ error: 'Internal server error' })
+		if (!res.headersSent) {
+			res.status(500).json({
+				error: 'Internal server error',
+				message: error?.message || 'Unknown error'
+			})
+		}
 	}
 })
 

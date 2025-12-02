@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 /**
  * Get the API URL, auto-detecting from the current hostname if needed
  * This ensures the frontend can connect to the backend when accessed from different machines
@@ -25,5 +27,45 @@ export function getApiUrl(): string {
 	}
 
 	return envApiUrl
+}
+
+/**
+ * Get authentication headers for API requests
+ * Returns headers with Bearer token if user is authenticated
+ */
+export async function getAuthHeaders(): Promise<HeadersInit> {
+	const headers: HeadersInit = {
+		'Content-Type': 'application/json',
+	}
+
+	try {
+		const { data: { session } } = await supabase.auth.getSession()
+		if (session?.access_token) {
+			headers['Authorization'] = `Bearer ${session.access_token}`
+		}
+	} catch (error) {
+		console.error('Failed to get auth session:', error)
+	}
+
+	return headers
+}
+
+/**
+ * Make an authenticated API request
+ * Automatically includes auth token in headers
+ */
+export async function authenticatedFetch(
+	url: string,
+	options: RequestInit = {}
+): Promise<Response> {
+	const headers = await getAuthHeaders()
+
+	return fetch(url, {
+		...options,
+		headers: {
+			...headers,
+			...options.headers,
+		},
+	})
 }
 

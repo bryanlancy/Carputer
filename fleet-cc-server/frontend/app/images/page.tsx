@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
-import { getApiUrl } from '../utils/api'
+import { getApiUrl, authenticatedFetch } from '../utils/api'
 import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
 
 interface Device {
@@ -79,7 +79,7 @@ export default function ImagesPage() {
 		const fetchImages = async () => {
 			try {
 				const apiUrl = getApiUrl()
-				const response = await fetch(
+				const response = await authenticatedFetch(
 					`${apiUrl}/api/images?includeUnverified=true&activeOnly=false`
 				)
 				if (response.ok) {
@@ -104,9 +104,8 @@ export default function ImagesPage() {
 
 	const fetchImageDetails = async (buildHash: string) => {
 		try {
-			const apiUrl =
-				process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-			const response = await fetch(
+			const apiUrl = getApiUrl()
+			const response = await authenticatedFetch(
 				`${apiUrl}/api/images/${encodeURIComponent(buildHash)}`
 			)
 			if (response.ok) {
@@ -148,9 +147,8 @@ export default function ImagesPage() {
 
 		setVerifying(buildHash)
 		try {
-			const apiUrl =
-				process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-			const response = await fetch(
+			const apiUrl = getApiUrl()
+			const response = await authenticatedFetch(
 				`${apiUrl}/api/images/${encodeURIComponent(buildHash)}/verify`,
 				{
 					method: 'PATCH',
@@ -165,7 +163,7 @@ export default function ImagesPage() {
 
 			if (response.ok) {
 				// Refresh images list
-				const imagesResponse = await fetch(
+				const imagesResponse = await authenticatedFetch(
 					`${apiUrl}/api/images?includeUnverified=true&activeOnly=false`
 				)
 				if (imagesResponse.ok) {

@@ -49,6 +49,15 @@ router.get('/', async (req, res) => {
 	try {
 		// Check database connection
 		const prisma = req.prisma
+
+		if (!prisma) {
+			return res.status(503).json({
+				status: 'unhealthy',
+				timestamp: new Date().toISOString(),
+				error: 'Database connection not available',
+			})
+		}
+
 		await prisma.$queryRaw`SELECT 1`
 
 		res.json({
@@ -58,12 +67,15 @@ router.get('/', async (req, res) => {
 				database: 'connected',
 			},
 		})
-	} catch (error) {
-		res.status(503).json({
-			status: 'unhealthy',
-			timestamp: new Date().toISOString(),
-			error: error instanceof Error ? error.message : 'Unknown error',
-		})
+	} catch (error: any) {
+		console.error('Health check error:', error)
+		if (!res.headersSent) {
+			res.status(503).json({
+				status: 'unhealthy',
+				timestamp: new Date().toISOString(),
+				error: error instanceof Error ? error.message : 'Unknown error',
+			})
+		}
 	}
 })
 

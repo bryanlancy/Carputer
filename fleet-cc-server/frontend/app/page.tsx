@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import styles from './page.module.scss'
-import { getApiUrl } from './utils/api'
+import { getApiUrl, authenticatedFetch } from './utils/api'
 import { useWebSocket, WebSocketMessage } from './hooks/useWebSocket'
 
 interface FleetMetrics {
@@ -29,7 +29,7 @@ export default function Home() {
 			const fetchMetrics = async () => {
 				try {
 					const apiUrl = getApiUrl()
-					const response = await fetch(
+					const response = await authenticatedFetch(
 						`${apiUrl}/api/metrics/overview`
 					)
 					if (response.ok) {
@@ -55,7 +55,7 @@ export default function Home() {
 		const fetchMetrics = async () => {
 			try {
 				const apiUrl = getApiUrl()
-				const response = await fetch(`${apiUrl}/api/metrics/overview`)
+				const response = await authenticatedFetch(`${apiUrl}/api/metrics/overview`)
 				if (response.ok) {
 					const data = await response.json()
 					setMetrics(data)

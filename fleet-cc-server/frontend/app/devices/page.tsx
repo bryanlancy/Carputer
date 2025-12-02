@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import styles from './page.module.scss'
-import { getApiUrl } from '../utils/api'
+import { getApiUrl, authenticatedFetch } from '../utils/api'
 import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
 
 interface Device {
@@ -61,7 +61,7 @@ export default function DevicesPage() {
     const fetchDevices = async () => {
       try {
         const apiUrl = getApiUrl()
-        const response = await fetch(`${apiUrl}/api/devices`)
+        const response = await authenticatedFetch(`${apiUrl}/api/devices`)
         if (response.ok) {
           const data = await response.json()
           setDevices(data)

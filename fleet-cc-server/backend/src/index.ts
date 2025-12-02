@@ -20,15 +20,21 @@ import healthRoutes from './routes/health';
 import imageRoutes from './routes/images';
 import verifiedImageRoutes from './routes/verifiedImages';
 import notificationRoutes from './routes/notifications';
+import adminNotificationRoutes from './routes/admin/notifications';
+import adminRulesRoutes from './routes/admin/rules';
 import realtimeRoutes, { broadcastDeviceUpdate, broadcastNotification, createWebSocketServer } from './routes/realtime';
 import { setBroadcastFunctions, DeviceStatusService } from './services/deviceStatus';
+import { initializeNotificationEventListeners } from './events/notificationEvents';
+import { initializeScheduledNotificationsWorker } from './jobs/scheduledNotifications';
+import { authenticate, requireAuth } from './middleware/auth';
 
 // Initialize Express app
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL || 'http://localhost:8000';
+// In Docker, use the service name; locally, use localhost
+const supabaseUrl = process.env.SUPABASE_URL || (process.env.DOCKER_ENV === 'true' ? 'http://auth:9999' : 'http://localhost:9999');
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.JWT_SECRET || 'dummy-key-for-development';
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY is not set. Using fallback key. Supabase features may not work.');
@@ -44,7 +50,7 @@ app.use(helmet({
 // CORS configuration - allow multiple origins in development
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://10.0.0.68:3000', 'http://127.0.0.1:3000'];
+  : ['http://localhost:3000', 'http://10.0.0.68:3000', 'http://10.0.0.41:3000', 'http://127.0.0.1:3000'];
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -76,6 +82,10 @@ app.use((req, res, next) => {
   req.supabase = supabase;
   next();
 });
+
+// Authentication middleware - runs on all routes but doesn't block
+// Individual routes can use requireAuth to enforce authentication
+app.use(authenticate);
 
 // Serve Swagger JSON spec for frontend (must be before Swagger UI middleware)
 app.get('/api-docs/swagger.json', (req, res) => {
@@ -131,6 +141,12 @@ app.get('/api-docs/swagger.json', (req, res) => {
     spec.servers[0].description = 'API Server';
   }
 
+  // Add Postman collection metadata for easy import
+  if (!spec.info['x-postman-collection-url']) {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    spec.info['x-postman-collection-url'] = `${baseUrl}/api-docs/swagger.json`;
+  }
+
   res.json(spec);
 });
 
@@ -138,17 +154,32 @@ app.get('/api-docs/swagger.json', (req, res) => {
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'Fleet CC API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true, // Keep auth token after page refresh
+    displayRequestDuration: true,
+    filter: true,
+    tryItOutEnabled: true,
+  },
 }));
 
 // Routes
+// Public routes (no authentication required)
 app.use('/health', healthRoutes);
+
+// Device registration and heartbeat are public (devices authenticate via deviceAuth middleware)
 app.use('/api/devices', deviceRoutes);
-app.use('/api/commands', commandRoutes);
-app.use('/api/metrics', metricsRoutes);
-app.use('/api/images', imageRoutes);
-app.use('/api/verified-images', verifiedImageRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/realtime', realtimeRoutes);
+
+// Protected routes (require authentication)
+// authenticate middleware extracts user from token and sets req.user
+// requireAuth middleware checks if req.user exists and returns 401 if not
+app.use('/api/commands', authenticate, requireAuth, commandRoutes);
+app.use('/api/metrics', authenticate, requireAuth, metricsRoutes);
+app.use('/api/images', authenticate, requireAuth, imageRoutes);
+app.use('/api/verified-images', authenticate, requireAuth, verifiedImageRoutes);
+app.use('/api/notifications', authenticate, requireAuth, notificationRoutes);
+app.use('/api/admin/notifications', authenticate, requireAuth, adminNotificationRoutes);
+app.use('/api/admin/notifications/rules', authenticate, requireAuth, adminRulesRoutes);
+app.use('/api/realtime', authenticate, requireAuth, realtimeRoutes);
 
 // Set broadcast functions in deviceStatus service for offline detection
 setBroadcastFunctions(broadcastDeviceUpdate, broadcastNotification);
@@ -201,10 +232,15 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+// Error handler (must be last)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: 'Internal server error',
+      message: err?.message || 'Unknown error'
+    });
+  }
 });
 
 // Start server
@@ -223,6 +259,21 @@ server.maxConnections = 1000;
 // Initialize WebSocket server
 createWebSocketServer(server);
 console.log('WebSocket server initialized on /api/realtime/ws');
+
+// Initialize notification event listeners
+initializeNotificationEventListeners(prisma);
+console.log('Notification event listeners initialized');
+
+// Initialize scheduled notifications worker (async - waits for Redis)
+// This runs in the background and won't block server startup
+initializeScheduledNotificationsWorker(prisma)
+  .then(() => {
+    console.log('Scheduled notifications worker initialized');
+  })
+  .catch((error) => {
+    console.warn('Failed to initialize scheduled notifications worker:', error.message);
+    console.warn('Server will continue without scheduled notifications. Ensure Redis is running to enable this feature.');
+  });
 
 // Type augmentation for Express Request
 declare global {

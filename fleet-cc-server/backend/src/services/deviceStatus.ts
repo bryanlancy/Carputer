@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notification';
+import { handleDeviceOfflineEvent } from '../events/notificationEvents';
 
 // Import broadcast functions (use lazy import to avoid circular dependency)
 let broadcastDeviceUpdate: ((device: any, notification?: any) => void) | null = null;
@@ -92,6 +93,18 @@ export class DeviceStatusService {
       } catch (broadcastError) {
         // Log broadcast error but don't fail status update
         console.error('Failed to broadcast offline device update:', broadcastError);
+      }
+
+      // Trigger notification event listeners for user-based notifications
+      try {
+        await handleDeviceOfflineEvent(deviceId, {
+          device_id: updatedDevice.id,
+          hostname: updatedDevice.hostname,
+          last_seen: device.last_seen,
+        });
+      } catch (eventError) {
+        // Log but don't fail - event listeners are optional
+        console.error('Failed to handle device offline event:', eventError);
       }
 
       return true;
