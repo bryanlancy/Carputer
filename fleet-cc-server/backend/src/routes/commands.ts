@@ -31,6 +31,8 @@ const commandStatusSchema = z.object({
  *     summary: Create a new command
  *     description: Creates a new command for a device. The command will be in 'pending' status until the device picks it up.
  *     tags: [Commands]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -97,7 +99,7 @@ router.post('/', async (req, res) => {
 			data: {
 				device_id: device.id,
 				command: data.command,
-				parameters: data.parameters || null,
+				parameters: data.parameters || undefined,
 				status: 'pending',
 			},
 		})
@@ -121,6 +123,8 @@ router.post('/', async (req, res) => {
  *     summary: Update command status
  *     description: Updates the status of a command. Typically called by the device to report command execution results.
  *     tags: [Commands]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: commandId
@@ -219,6 +223,8 @@ router.patch('/:commandId/status', async (req, res) => {
  *     summary: Get commands for a device
  *     description: Returns all commands for a specific device, ordered by creation date (newest first)
  *     tags: [Commands]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: deviceId
@@ -290,6 +296,8 @@ router.get('/device/:deviceId', async (req, res) => {
  *     summary: Get command by ID
  *     description: Returns a single command by its ID
  *     tags: [Commands]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: commandId
@@ -304,6 +312,8 @@ router.get('/device/:deviceId', async (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Command'
+ *       401:
+ *         description: Unauthorized
  *       404:
  *         description: Command not found
  *         content:

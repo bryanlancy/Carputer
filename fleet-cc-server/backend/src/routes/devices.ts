@@ -4,7 +4,9 @@ import { ImageVerificationService } from '../services/imageVerification'
 import { NotificationService } from '../services/notification'
 import { DeviceStatusService } from '../services/deviceStatus'
 import { authenticateDevice } from '../middleware/deviceAuth'
+import { requireAuth } from '../middleware/auth'
 import { broadcastDeviceUpdate, broadcastNotification } from '../routes/realtime'
+import { handleDeviceOnlineEvent } from '../events/notificationEvents'
 
 const router = express.Router()
 
@@ -378,6 +380,20 @@ router.post('/register/auto', async (req, res) => {
 					// Log broadcast error but don't fail registration
 					console.error('Failed to broadcast device update:', broadcastError)
 				}
+
+				// Trigger notification event listeners for user-based notifications
+				try {
+					await handleDeviceOnlineEvent(device.id, {
+						device_id: device.id,
+						hostname: device.hostname,
+						device_id_string: device.device_id,
+						ip: device.current_ip,
+						registration_method: device.registration_method,
+					})
+				} catch (eventError) {
+					// Log but don't fail - event listeners are optional
+					console.error('Failed to handle device online event:', eventError)
+				}
 			} catch (notificationError) {
 				// Log notification error but don't fail registration
 				console.error(
@@ -675,7 +691,7 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 				uptime: uptimeValue,
 				services_status: data.services
 					? data.services
-					: device.services_status,
+					: device.services_status || undefined,
 				status: 'online',
 			},
 		})
@@ -697,6 +713,21 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 						},
 					}
 				)
+
+				// Trigger notification event listeners for user-based notifications
+				try {
+					await handleDeviceOnlineEvent(device.id, {
+						device_id: device.id,
+						hostname: device.hostname,
+						device_id_string: device.device_id,
+						ip: device.current_ip,
+						uptime: data.uptime,
+						version: data.version,
+					})
+				} catch (eventError) {
+					// Log but don't fail - event listeners are optional
+					console.error('Failed to handle device online event:', eventError)
+				}
 			} catch (notificationError) {
 				// Log notification error but don't fail heartbeat
 				console.error(
@@ -755,6 +786,8 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
  *     summary: Get all devices
  *     description: Returns a list of all registered devices, sorted by status (online first), then by last_seen, then by device_id
  *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of devices
@@ -764,6 +797,8 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Device'
+ *       401:
+ *         description: Unauthorized
  *       500:
  *         description: Internal server error
  *         content:
@@ -771,7 +806,7 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
 	try {
 		const prisma = req.prisma
 		const deviceStatusService = new DeviceStatusService(prisma)
@@ -816,6 +851,8 @@ router.get('/', async (req, res) => {
  *     summary: Get device by ID
  *     description: Returns a single device by its device_id
  *     tags: [Devices]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: deviceId
@@ -830,6 +867,8 @@ router.get('/', async (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Device'
+ *       401:
+ *         description: Unauthorized
  *       404:
  *         description: Device not found
  *         content:
@@ -843,7 +882,7 @@ router.get('/', async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:deviceId', async (req, res) => {
+router.get('/:deviceId', requireAuth, async (req, res) => {
 	try {
 		const prisma = req.prisma
 		const device = await prisma.device.findUnique({
