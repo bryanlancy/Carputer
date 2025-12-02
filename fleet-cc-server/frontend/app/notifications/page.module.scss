@@ -1,0 +1,133 @@
+.container {
+  padding: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+
+  h1 {
+    margin: 0;
+  }
+
+  .actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      background: #0070f3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+
+      &:hover {
+        background: #0051cc;
+      }
+    }
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notification {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid transparent;
+
+  &.unviewed {
+    border-left-color: #0070f3;
+    background: #f0f7ff;
+  }
+
+  .content {
+    flex: 1;
+
+    .headerRow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+
+      h3 {
+        margin: 0;
+        font-size: 1.125rem;
+        color: #333;
+      }
+
+      .badge {
+        padding: 0.25rem 0.75rem;
+        background: #0070f3;
+        color: white;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+    }
+
+    .message {
+      margin: 0.5rem 0;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.875rem;
+      color: #999;
+
+      .type {
+        font-weight: 600;
+        color: #666;
+      }
+    }
+  }
+
+  .viewButton {
+    padding: 0.5rem 1rem;
+    background: #0070f3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    white-space: nowrap;
+
+    &:hover {
+      background: #0051cc;
+    }
+  }
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem;
+  color: #999;
+  font-size: 1.125rem;
+}
+
