@@ -1,0 +1,336 @@
+.container {
+  .error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .dismissError {
+      background: none;
+      border: none;
+      color: var(--error-color);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        opacity: 0.7;
+      }
+    }
+  }
+}
+
+.actions {
+  margin-bottom: 1.5rem;
+}
+
+.addButton {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.formOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.formContainer {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 2rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+
+  h3 {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+  }
+
+  .formError {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .dismissError {
+      background: none;
+      border: none;
+      color: var(--error-color);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+
+      &:hover {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  .formGroup {
+    margin-bottom: 1.5rem;
+
+    label {
+      display: block;
+      color: var(--text-primary);
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+
+      .required {
+        color: var(--error-color);
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 0.75rem;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 1rem;
+        font-family: inherit;
+
+        &:focus {
+          outline: none;
+          border-color: var(--primary-color);
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      small {
+        display: block;
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+      }
+    }
+
+    .checkboxLabel {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+
+      input[type='checkbox'] {
+        width: auto;
+        cursor: pointer;
+      }
+    }
+  }
+
+  .formActions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .saveButton,
+  .cancelButton {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+
+  .saveButton {
+    background: var(--primary-color);
+    color: white;
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+
+  .cancelButton {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+
+    &:hover {
+      background: var(--border-color);
+    }
+  }
+}
+
+.tableContainer {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  overflow: hidden;
+
+  thead {
+    background: var(--bg-secondary);
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-primary);
+      border-bottom: 2px solid var(--border-color);
+    }
+  }
+
+  tbody {
+    tr {
+      border-top: 1px solid var(--border-color);
+      transition: background 0.2s;
+
+      &:hover {
+        background: var(--bg-secondary);
+      }
+
+      td {
+        padding: 1rem;
+        color: var(--text-secondary);
+
+        .codeCell {
+          font-family: 'Courier New', monospace;
+          color: var(--primary-color);
+        }
+
+        .severity {
+          display: inline-block;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          text-transform: capitalize;
+
+          &.info {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+          }
+
+          &.warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+          }
+
+          &.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+          }
+
+          &.critical {
+            background: rgba(220, 38, 38, 0.3);
+            color: #ef4444;
+          }
+        }
+
+        .enabled {
+          color: var(--success-color);
+          font-weight: 600;
+        }
+
+        .disabled {
+          color: var(--text-secondary);
+        }
+
+        button {
+          padding: 0.5rem 1rem;
+          margin-right: 0.5rem;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.875rem;
+          font-weight: 500;
+          transition: opacity 0.2s;
+
+          &:hover {
+            opacity: 0.9;
+          }
+        }
+
+        .editButton {
+          background: var(--primary-color);
+          color: white;
+        }
+
+        .deleteButton {
+          background: var(--error-color);
+          color: white;
+        }
+      }
+    }
+  }
+}
+
+.empty {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.loading {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
