@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
 import AdminNotificationSettings from '../components/AdminNotificationSettings'
 import styles from './page.module.scss'
@@ -10,48 +11,58 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState<'notifications'>('notifications')
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
+  const { user, session, loading: authLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    if (!authLoading) {
+      checkAuth()
+    }
+  }, [authLoading, session])
 
   const checkAuth = async () => {
+    // Check if user is authenticated
+    if (!user || !session) {
+      setIsAuthorized(false)
+      setLoading(false)
+      return
+    }
+
     try {
-      const token = localStorage.getItem('auth_token')
-
-      if (!token) {
-        setIsAuthorized(false)
-        setLoading(false)
-        router.push('/')
-        return
-      }
-
       // Verify token and check admin role by trying to access an admin endpoint
       const apiUrl = getApiUrl()
-      const response = await fetch(`${apiUrl}/api/admin/notifications/types`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-      if (response.status === 401 || response.status === 403) {
-        setIsAuthorized(false)
-        setLoading(false)
-        router.push('/')
-        return
-      }
+        const response = await fetch(`${apiUrl}/api/admin/notifications/types`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          signal: controller.signal,
+        })
 
-      if (response.ok) {
-        setIsAuthorized(true)
-      } else {
+        clearTimeout(timeoutId)
+
+        if (response.status === 401 || response.status === 403) {
+          setIsAuthorized(false)
+          setLoading(false)
+          return
+        }
+
+        if (response.ok) {
+          setIsAuthorized(true)
+        } else {
+          setIsAuthorized(false)
+        }
+      } catch (fetchError: any) {
+        // Generic error - don't reveal details
         setIsAuthorized(false)
-        router.push('/')
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Generic error - don't reveal details
       console.error('Auth check error:', error)
       setIsAuthorized(false)
-      router.push('/')
     } finally {
       setLoading(false)
     }
@@ -68,14 +79,30 @@ export default function AdminPage() {
   if (!isAuthorized) {
     return (
       <div className={styles.container}>
-        <div className={styles.error}>Unauthorized. Redirecting...</div>
+        <div className={styles.errorContainer}>
+          <h2>Access Denied</h2>
+          <p>User not authenticated or insufficient permissions.</p>
+          <div className={styles.buttonGroup}>
+            <button onClick={() => router.push('/')} className={styles.backButton}>
+              Return to Dashboard
+            </button>
+            {!user && (
+              <button onClick={() => router.push('/login')} className={styles.loginButton}>
+                Log In
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
     <div className={styles.container}>
-      <h1>Admin Panel</h1>
+      <div className={styles.header}>
+        <h1>Admin Dashboard</h1>
+        <p className={styles.subtitle}>Manage system settings and configurations</p>
+      </div>
 
       <div className={styles.layout}>
         <nav className={styles.sidebar}>
@@ -85,6 +112,7 @@ export default function AdminPage() {
                 className={activeSection === 'notifications' ? styles.active : ''}
                 onClick={() => setActiveSection('notifications')}
               >
+                <span className={styles.icon}>🔔</span>
                 Notifications
               </button>
             </li>
@@ -93,10 +121,9 @@ export default function AdminPage() {
         </nav>
 
         <div className={styles.content}>
-          {activeSection === 'notifications' && isAuthorized && <AdminNotificationSettings />}
+          {activeSection === 'notifications' && <AdminNotificationSettings />}
         </div>
       </div>
     </div>
   )
 }
-
