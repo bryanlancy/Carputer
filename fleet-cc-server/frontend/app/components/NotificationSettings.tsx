@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
 import styles from './NotificationSettings.module.scss'
 
@@ -13,6 +14,7 @@ interface NotificationPreferences {
 }
 
 export default function NotificationSettings() {
+  const { session } = useAuth()
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -24,7 +26,7 @@ export default function NotificationSettings() {
   const loadPreferences = async () => {
     try {
       const apiUrl = getApiUrl()
-      const token = localStorage.getItem('auth_token') // Get token from your auth system
+      const token = session?.access_token
 
       if (!token) {
         // No token - use default preferences (user not logged in)
@@ -83,7 +85,7 @@ export default function NotificationSettings() {
   }
 
   const savePreferences = async () => {
-    const token = localStorage.getItem('auth_token')
+    const token = session?.access_token
     if (!token) {
       alert('Please log in to save preferences')
       return
