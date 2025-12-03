@@ -170,8 +170,7 @@ model Notification {
   title               String          @db.VarChar(255)
   message             String?         @db.Text
   metadata            Json?
-  read                Boolean         @default(false)
-  read_at             DateTime?
+  show_in_feed        Boolean         @default(true)
   created_at          DateTime        @default(now())
 
   // Relations
@@ -180,7 +179,7 @@ model Notification {
   @@index([device_id])
   @@index([notification_type_id])
   @@index([device_log_id])
-  @@index([read])
+  @@index([show_in_feed])
   @@index([created_at])
   @@map("notifications")
 }
@@ -242,6 +241,7 @@ model NotificationRule {
   trigger_config      Json
   notification_type_code String       @db.VarChar(100) // Reference to NotificationType.type_code (manual relation)
   target_users        Json?           // Array of user IDs or role names, null means all users
+  message_template    String?         @db.Text
   enabled             Boolean         @default(true)
   priority            Int             @default(0)
   created_at          DateTime        @default(now())
@@ -249,6 +249,8 @@ model NotificationRule {
 
   // Relations
   triggers            NotificationTrigger[]
+  trigger_event_connections TriggerEventConnection[]
+  wiring_configuration WiringConfiguration?
 
   @@index([enabled])
   @@index([trigger_type])
@@ -288,5 +290,77 @@ model UserNotificationPreferences {
 
   @@index([user_id])
   @@map("user_notification_preferences")
+}
+
+model Trigger {
+  id                  Int             @id @default(autoincrement())
+  trigger_code        String          @unique @db.VarChar(100)
+  trigger_name        String          @db.VarChar(255)
+  description         String?         @db.Text
+  output_schema       Json            // JSON Schema defining what data this trigger emits
+  enabled             Boolean         @default(true)
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  trigger_event_connections TriggerEventConnection[]
+
+  @@index([trigger_code])
+  @@index([enabled])
+  @@map("triggers")
+}
+
+model Event {
+  id                  Int             @id @default(autoincrement())
+  event_code          String          @unique @db.VarChar(100)
+  event_name          String          @db.VarChar(255)
+  description         String?         @db.Text
+  input_schema        Json            // JSON Schema defining what data this event requires
+  handler_type        String          @db.VarChar(50) // 'notification', 'email', 'command', etc.
+  enabled             Boolean         @default(true)
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  trigger_event_connections TriggerEventConnection[]
+
+  @@index([event_code])
+  @@index([enabled])
+  @@index([handler_type])
+  @@map("events")
+}
+
+model TriggerEventConnection {
+  id                  Int             @id @default(autoincrement())
+  rule_id             Int
+  rule                NotificationRule @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  trigger_id          Int
+  trigger              Trigger         @relation(fields: [trigger_id], references: [id], onDelete: Cascade)
+  event_id             Int
+  event                Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  connection_config    Json?           // Additional configuration for this connection
+  enabled             Boolean         @default(true)
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  @@unique([rule_id, trigger_id, event_id], name: "unique_rule_trigger_event")
+  @@index([rule_id])
+  @@index([trigger_id])
+  @@index([event_id])
+  @@map("trigger_event_connections")
+}
+
+model WiringConfiguration {
+  id                  Int             @id @default(autoincrement())
+  rule_id             Int             @unique
+  rule                NotificationRule @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  nodes               Json            // React Flow nodes with positions
+  edges               Json            // React Flow edges/connections
+  viewport            Json?           // Viewport position/zoom
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  @@index([rule_id])
+  @@map("wiring_configurations")
 }
 
