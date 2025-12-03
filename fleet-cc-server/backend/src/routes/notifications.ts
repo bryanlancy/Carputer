@@ -554,6 +554,102 @@ router.get('/user/me/unread-count', requireAuth, async (req, res) => {
 
 /**
  * @swagger
+ * /api/notifications/user/me/feed:
+ *   get:
+ *     summary: Get user notifications for feed
+ *     description: Returns notifications that should appear in the navbar feed (show_in_feed = true)
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Maximum number of notifications to return
+ *       - in: query
+ *         name: unviewedOnly
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Return only unviewed notifications
+ *     responses:
+ *       200:
+ *         description: List of notifications for feed
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/user/me/feed', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const limit = req.query.limit
+			? parseInt(req.query.limit as string, 10)
+			: 20
+		const unviewedOnly = req.query.unviewedOnly === 'true'
+
+		// Get user notifications that have show_in_feed = true
+		const userNotifications = await prisma.userNotification.findMany({
+			where: {
+				user_id: req.user.id,
+				...(unviewedOnly && { viewed: false }),
+				notification: {
+					show_in_feed: true,
+				},
+			},
+			include: {
+				notification: {
+					include: {
+						notification_type: true,
+						device: {
+							select: {
+								id: true,
+								device_id: true,
+								hostname: true,
+								status: true,
+							},
+						},
+					},
+				},
+			},
+			orderBy: {
+				created_at: 'desc',
+			},
+			take: limit,
+		})
+
+		// Format response
+		const notifications = userNotifications.map((un) => ({
+			id: un.notification.id,
+			title: un.notification.title,
+			message: un.notification.message,
+			notification_type: un.notification.notification_type,
+			device: un.notification.device,
+			viewed: un.viewed,
+			viewed_at: un.viewed_at,
+			created_at: un.notification.created_at,
+		}))
+
+		const jsonString = JSON.stringify(notifications, (key, value) =>
+			typeof value === 'bigint' ? value.toString() : value
+		)
+
+		res.setHeader('Content-Type', 'application/json')
+		res.send(jsonString)
+	} catch (error) {
+		console.error('Get user feed notifications error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
  * /api/notifications/{notificationId}/view:
  *   post:
  *     summary: Mark notification as viewed by current user

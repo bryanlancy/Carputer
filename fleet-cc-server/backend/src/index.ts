@@ -22,6 +22,9 @@ import verifiedImageRoutes from './routes/verifiedImages';
 import notificationRoutes from './routes/notifications';
 import adminNotificationRoutes from './routes/admin/notifications';
 import adminRulesRoutes from './routes/admin/rules';
+import adminTriggersRoutes from './routes/admin/triggers';
+import adminEventsRoutes from './routes/admin/events';
+import adminWiringRoutes from './routes/admin/wiring';
 import realtimeRoutes, { broadcastDeviceUpdate, broadcastNotification, createWebSocketServer } from './routes/realtime';
 import { setBroadcastFunctions, DeviceStatusService } from './services/deviceStatus';
 import { initializeNotificationEventListeners } from './events/notificationEvents';
@@ -179,6 +182,9 @@ app.use('/api/verified-images', authenticate, requireAuth, verifiedImageRoutes);
 app.use('/api/notifications', authenticate, requireAuth, notificationRoutes);
 app.use('/api/admin/notifications', authenticate, requireAuth, adminNotificationRoutes);
 app.use('/api/admin/notifications/rules', authenticate, requireAuth, adminRulesRoutes);
+app.use('/api/admin/triggers', authenticate, requireAuth, adminTriggersRoutes);
+app.use('/api/admin/events', authenticate, requireAuth, adminEventsRoutes);
+app.use('/api/admin/wiring', authenticate, requireAuth, adminWiringRoutes);
 app.use('/api/realtime', authenticate, requireAuth, realtimeRoutes);
 
 // Set broadcast functions in deviceStatus service for offline detection

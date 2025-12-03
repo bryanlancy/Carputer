@@ -59,6 +59,7 @@ export class NotificationService {
       message?: string;
       metadata?: any;
       deviceLogId?: number;
+      show_in_feed?: boolean;
     } = {}
   ): Promise<any> {
     if (!deviceId || !typeCode) {
@@ -86,7 +87,7 @@ export class NotificationService {
         title,
         message: options.message || null,
         metadata: options.metadata || null,
-        read: false,
+        show_in_feed: options.show_in_feed !== undefined ? options.show_in_feed : true,
       },
       include: {
         device: {

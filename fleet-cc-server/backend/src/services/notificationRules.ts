@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notification';
+import { TemplateService } from './template';
 
 /**
  * Notification Rule Service
@@ -22,6 +23,7 @@ export class NotificationRuleService {
     notification_type_code: string;
     target_users?: string[] | null;
     target_roles?: string[] | null;
+    message_template?: string;
     enabled?: boolean;
     priority?: number;
   }): Promise<any> {
@@ -50,6 +52,7 @@ export class NotificationRuleService {
         trigger_config: data.trigger_config || {},
         notification_type_code: data.notification_type_code,
         target_users: targetUsers,
+        message_template: data.message_template || null,
         enabled: data.enabled !== undefined ? data.enabled : true,
         priority: data.priority || 0,
       },
@@ -259,6 +262,7 @@ export class NotificationRuleService {
       message?: string;
       metadata?: any;
       deviceLogId?: number;
+      triggerOutput?: any; // Data from trigger for template rendering
     } = {}
   ): Promise<any> {
     const rule = await this.getRuleById(ruleId);
@@ -271,15 +275,31 @@ export class NotificationRuleService {
       throw new Error(`Rule ${ruleId} is disabled`);
     }
 
+    // Render message template if it exists
+    let renderedMessage = options.message;
+    if (rule.message_template && options.triggerOutput) {
+      try {
+        renderedMessage = TemplateService.render(rule.message_template, options.triggerOutput);
+      } catch (error) {
+        console.error('Template rendering error:', error);
+        // Fall back to provided message or template as-is
+        renderedMessage = options.message || rule.message_template;
+      }
+    } else if (rule.message_template && !renderedMessage) {
+      // If no trigger output but template exists, use template as-is
+      renderedMessage = rule.message_template;
+    }
+
     // Create notification
     const notification = await this.notificationService.createNotification(
       options.deviceId || 1,
       rule.notification_type_code,
       {
         title: options.title,
-        message: options.message,
+        message: renderedMessage,
         metadata: options.metadata,
         deviceLogId: options.deviceLogId,
+        show_in_feed: true, // Default to showing in feed
       }
     );
 

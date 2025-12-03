@@ -159,12 +159,13 @@ router.get('/', async (req, res) => {
  */
 const createRuleSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   trigger_type: z.enum(['date_time', 'backend_event', 'user_driven']),
   trigger_config: z.any().optional().default({}),
   notification_type_code: z.string().min(1),
   target_users: z.array(z.string()).optional().nullable(),
   target_roles: z.array(z.string()).optional().nullable(),
+  message_template: z.string().optional().nullable(),
   enabled: z.boolean().default(true),
   priority: z.number().int().default(0),
 });
@@ -187,11 +188,20 @@ router.post('/', async (req, res) => {
     res.status(201).json(rule);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: error.errors });
+      console.error('Validation error:', error.errors);
+      res.status(400).json({
+        error: 'Validation error',
+        details: error.errors.map(e => ({
+          path: e.path.join('.'),
+          message: e.message,
+        }))
+      });
       return;
     }
     console.error('Create notification rule error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({
+      error: error.message || 'Internal server error'
+    });
   }
 });
 
@@ -330,12 +340,13 @@ router.get('/:ruleId', async (req, res) => {
  */
 const updateRuleSchema = z.object({
   name: z.string().min(1).optional(),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   trigger_type: z.enum(['date_time', 'backend_event', 'user_driven']).optional(),
   trigger_config: z.any().optional(),
   notification_type_code: z.string().min(1).optional(),
   target_users: z.array(z.string()).optional().nullable(),
   target_roles: z.array(z.string()).optional().nullable(),
+  message_template: z.string().optional().nullable(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
 });
