@@ -1,38 +1,133 @@
-.container {
-	position: fixed !important; /* Force fixed positioning */
-	bottom: 20px !important;
-	right: 20px !important;
-	z-index: 99999 !important; /* Extremely high z-index to ensure it's above all other elements */
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	max-height: calc(100vh - 40px);
-	overflow-y: auto;
-	overflow-x: hidden;
-	align-items: flex-end;
-	pointer-events: none;
-	/* Ensure it's always visible */
-	visibility: visible !important;
-	opacity: 1 !important;
-	/* Ensure it's not hidden by parent elements */
-	isolation: isolate;
-	transform: translateZ(0); /* Force hardware acceleration */
-
-	& > * {
-		pointer-events: auto;
-		position: relative;
-	}
+.feedContainer {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  width: 400px;
+  max-height: 600px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-@media (max-width: 768px) {
-	.container {
-		bottom: 10px;
-		right: 10px;
-		left: 10px;
-		align-items: stretch;
+.feedHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
 
-		& > * {
-			max-width: none;
-		}
-	}
+  h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+}
+
+.feedContent {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.loading,
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.notificationList {
+  display: flex;
+  flex-direction: column;
+}
+
+.notificationItem {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  &.unviewed {
+    background: rgba(59, 130, 246, 0.05);
+    border-left: 3px solid var(--primary-color);
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.notificationHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.notificationTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.unviewedBadge {
+  background: var(--primary-color);
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.notificationMessage {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.notificationMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.notificationTime {
+  font-size: 0.75rem;
+}
+
+.deviceName {
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
 }
