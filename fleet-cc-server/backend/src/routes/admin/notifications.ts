@@ -108,7 +108,7 @@ router.get('/types', async (req, res) => {
 const createTypeSchema = z.object({
   type_code: z.string().min(1),
   type_name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   severity: z.enum(['info', 'warning', 'error', 'critical']).default('info'),
   enabled: z.boolean().default(true),
 });
@@ -198,7 +198,7 @@ router.post('/types', async (req, res) => {
  */
 const updateTypeSchema = z.object({
   type_name: z.string().min(1).optional(),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   severity: z.enum(['info', 'warning', 'error', 'critical']).optional(),
   enabled: z.boolean().optional(),
 });
