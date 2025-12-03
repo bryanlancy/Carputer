@@ -106,6 +106,19 @@ async function handleRequest(
       body,
     })
 
+    // For logout, even if GoTrue returns an error, return success
+    // This allows the client to clear local state even if the server-side logout fails
+    if (endpoint === 'logout') {
+      const data = await response.text().catch(() => '{}')
+      // Return success even if GoTrue fails
+      return new NextResponse(data || '{}', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    }
+
     const data = await response.text()
 
     return new NextResponse(data, {
@@ -115,6 +128,17 @@ async function handleRequest(
       },
     })
   } catch (error: any) {
+    // For logout, return success even if there's an error
+    // This allows the client to clear local state
+    if (endpoint === 'logout') {
+      return new NextResponse('{}', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    }
+
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

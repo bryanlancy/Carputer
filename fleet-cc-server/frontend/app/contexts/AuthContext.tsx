@@ -63,10 +63,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    // Clear state immediately (optimistic update)
     setSession(null)
     setUser(null)
-    router.push('/login')
+
+    // Clear all auth-related storage
+    try {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('supabase.auth.token')
+      localStorage.removeItem('sb-access-token')
+      localStorage.removeItem('sb-refresh-token')
+      // Clear all Supabase-related keys
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          localStorage.removeItem(key)
+        }
+      })
+      sessionStorage.removeItem('auth_token')
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          sessionStorage.removeItem(key)
+        }
+      })
+    } catch (storageError) {
+      console.warn('Error clearing storage:', storageError)
+    }
+
+    // Try to sign out from Supabase (but don't wait for it if it fails)
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+      ])
+    } catch (error) {
+      // Ignore Supabase signOut errors - we've already cleared local state
+      console.warn('Supabase signOut failed (continuing anyway):', error)
+    }
+
+    // Always redirect to login, regardless of Supabase response
+    // Use window.location for a hard redirect to ensure clean state
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    } else {
+      router.push('/login')
+    }
   }
 
   const value: AuthContextType = {
