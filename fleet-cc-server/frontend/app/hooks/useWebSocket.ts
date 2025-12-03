@@ -23,7 +23,7 @@ export function useWebSocket(
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttempts = useRef(0)
-  const maxReconnectAttempts = 5
+  const maxReconnectAttempts = 3
   const baseReconnectDelay = 1000 // 1 second
   const connectingRef = useRef(false)
   const onMessageRef = useRef(onMessage)
@@ -108,10 +108,8 @@ export function useWebSocket(
         if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
           const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts.current)
           reconnectAttempts.current++
-          // Only log reconnection attempts, not every close event
-          if (reconnectAttempts.current <= 3) {
-            console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`)
-          }
+          // Only log reconnection attempts
+          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`)
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
