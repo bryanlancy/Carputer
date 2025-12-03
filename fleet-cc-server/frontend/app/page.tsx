@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import styles from './page.module.scss'
 import { getApiUrl, authenticatedFetch } from './utils/api'
 import { useWebSocket, WebSocketMessage } from './hooks/useWebSocket'
+import VersionDistributionPieChart from './components/VersionDistributionPieChart'
 
 interface FleetMetrics {
 	devices: {
@@ -165,20 +166,9 @@ export default function Home() {
 
 					<div className={styles.card}>
 						<h2>Version Distribution</h2>
-						{metrics?.versions && metrics.versions.length > 0 ? (
-							<ul className={styles.versionList}>
-								{metrics.versions.map(version => (
-									<li
-										key={version.current_build_id}
-										className={styles.versionItem}>
-										<span>{version.current_build_id}</span>
-										<span>{version.count} devices</span>
-									</li>
-								))}
-							</ul>
-						) : (
-							<p>No version data available</p>
-						)}
+						<VersionDistributionPieChart
+							versions={metrics?.versions || []}
+						/>
 					</div>
 				</section>
 			</main>

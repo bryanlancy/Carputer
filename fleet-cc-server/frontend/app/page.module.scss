@@ -133,29 +133,3 @@
   color: var(--primary-color);
 }
 
-.versionList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.versionItem {
-  display: flex;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  font-family: 'Courier New', monospace;
-
-  span:first-child {
-    color: var(--text-primary);
-  }
-
-  span:last-child {
-    color: var(--text-secondary);
-    font-weight: 500;
-  }
-}
-
