@@ -135,3 +135,4 @@ INSERT INTO events (event_code, event_name, description, input_schema, handler_t
    '{"type": "object", "properties": {"device": {"type": "object"}, "command": {"type": "string"}, "parameters": {"type": "object"}}, "required": ["device", "command"]}'::jsonb, 'command', true)
 ON CONFLICT (event_code) DO NOTHING;
 
+
