@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
+import TemplateEditor from './TemplateEditor'
 import styles from './NotificationRuleManager.module.scss'
 
 interface NotificationRule {
@@ -308,16 +309,11 @@ export default function NotificationRuleManager() {
               </div>
 
               <div className={styles.formGroup}>
-                <label>
-                  Message Template
-                  <textarea
-                    value={formData.message_template || ''}
-                    onChange={(e) => setFormData({ ...formData, message_template: e.target.value })}
-                    rows={4}
-                    placeholder="e.g., Device {{device.hostname}} came online at {{timestamp}}"
-                  />
-                  <small>Use {{variable}} syntax to insert dynamic values. Available variables depend on the trigger type.</small>
-                </label>
+                <TemplateEditor
+                  value={formData.message_template || ''}
+                  onChange={(value) => setFormData({ ...formData, message_template: value })}
+                  triggerType={formData.trigger_type}
+                />
               </div>
 
               <div className={styles.formGroup}>

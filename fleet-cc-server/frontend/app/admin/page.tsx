@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
 import AdminNotificationSettings from '../components/AdminNotificationSettings'
+import WiringManager from '../components/WiringManager'
 import styles from './page.module.scss'
 
 export default function AdminPage() {
-  const [activeSection, setActiveSection] = useState<'notifications'>('notifications')
+  const [activeSection, setActiveSection] = useState<'notifications' | 'wiring'>('notifications')
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const { user, session, loading: authLoading } = useAuth()
@@ -116,12 +117,21 @@ export default function AdminPage() {
                 Notifications
               </button>
             </li>
-            {/* Add more admin sections here in the future */}
+            <li>
+              <button
+                className={activeSection === 'wiring' ? styles.active : ''}
+                onClick={() => setActiveSection('wiring')}
+              >
+                <span className={styles.icon}>🔌</span>
+                Wiring
+              </button>
+            </li>
           </ul>
         </nav>
 
         <div className={styles.content}>
           {activeSection === 'notifications' && <AdminNotificationSettings />}
+          {activeSection === 'wiring' && <WiringManager />}
         </div>
       </div>
     </div>
