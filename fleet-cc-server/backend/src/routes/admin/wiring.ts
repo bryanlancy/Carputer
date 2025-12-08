@@ -15,7 +15,7 @@ router.use(requireAdmin);
 const saveWiringSchema = z.object({
   nodes: z.any(),
   edges: z.any(),
-  viewport: z.any().optional(),
+  viewport: z.any().optional().nullable(),
 });
 
 const createConnectionSchema = z.object({
@@ -76,7 +76,14 @@ router.post('/:ruleId', async (req, res) => {
     }
 
     const data = saveWiringSchema.parse(req.body);
-    const wiring = await wiringService.saveWiringConfiguration(ruleId, data);
+    if (!data.nodes || !data.edges) {
+      return res.status(400).json({ error: 'nodes and edges are required' });
+    }
+    const wiring = await wiringService.saveWiringConfiguration(ruleId, {
+      nodes: data.nodes,
+      edges: data.edges,
+      viewport: data.viewport,
+    });
 
     res.json(wiring);
   } catch (error: any) {
@@ -234,4 +241,5 @@ router.post('/validate', async (req, res) => {
 });
 
 export default router;
+
 

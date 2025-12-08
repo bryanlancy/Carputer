@@ -104,7 +104,14 @@ router.post('/', async (req, res) => {
     const eventService = new EventService(prisma);
 
     const data = createEventSchema.parse(req.body);
-    const event = await eventService.createEvent(data);
+    if (!data.input_schema) {
+      return res.status(400).json({ error: 'input_schema is required' });
+    }
+    const event = await eventService.createEvent({
+      ...data,
+      description: data.description ?? undefined,
+      input_schema: data.input_schema,
+    });
 
     res.status(201).json(event);
   } catch (error: any) {
@@ -137,7 +144,10 @@ router.put('/:eventId', async (req, res) => {
     }
 
     const data = updateEventSchema.parse(req.body);
-    const event = await eventService.updateEvent(eventId, data);
+    const event = await eventService.updateEvent(eventId, {
+      ...data,
+      description: data.description ?? undefined,
+    });
 
     res.json(event);
   } catch (error: any) {
@@ -180,4 +190,5 @@ router.delete('/:eventId', async (req, res) => {
 });
 
 export default router;
+
 

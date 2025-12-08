@@ -124,7 +124,7 @@ router.post('/types', async (req, res) => {
       data.type_code,
       {
         typeName: data.type_name,
-        description: data.description,
+        description: data.description ?? undefined,
         severity: data.severity,
         enabled: data.enabled,
       }
@@ -213,7 +213,7 @@ router.put('/types/:typeCode', async (req, res) => {
       where: { type_code: typeCode },
       data: {
         ...(data.type_name && { type_name: data.type_name }),
-        ...(data.description !== undefined && { description: data.description }),
+        ...(data.description !== undefined && { description: data.description ?? null }),
         ...(data.severity && { severity: data.severity }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
       },

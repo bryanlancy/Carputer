@@ -181,6 +181,8 @@ router.post('/', async (req, res) => {
     const ruleData = {
       ...data,
       trigger_config: data.trigger_config || {},
+      description: data.description ?? undefined,
+      message_template: data.message_template ?? undefined,
     };
 
     const rule = await ruleService.createRule(ruleData);
@@ -365,7 +367,10 @@ router.put('/:ruleId', async (req, res) => {
 
     const data = updateRuleSchema.parse(req.body);
 
-    const rule = await ruleService.updateRule(ruleId, data);
+    const rule = await ruleService.updateRule(ruleId, {
+      ...data,
+      description: data.description ?? undefined,
+    });
 
     res.json(rule);
   } catch (error: any) {

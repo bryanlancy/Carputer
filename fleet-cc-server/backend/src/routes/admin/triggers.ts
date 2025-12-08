@@ -101,7 +101,14 @@ router.post('/', async (req, res) => {
     const triggerService = new TriggerService(prisma);
 
     const data = createTriggerSchema.parse(req.body);
-    const trigger = await triggerService.createTrigger(data);
+    if (!data.output_schema) {
+      return res.status(400).json({ error: 'output_schema is required' });
+    }
+    const trigger = await triggerService.createTrigger({
+      ...data,
+      description: data.description ?? undefined,
+      output_schema: data.output_schema,
+    });
 
     res.status(201).json(trigger);
   } catch (error: any) {
@@ -134,7 +141,10 @@ router.put('/:triggerId', async (req, res) => {
     }
 
     const data = updateTriggerSchema.parse(req.body);
-    const trigger = await triggerService.updateTrigger(triggerId, data);
+    const trigger = await triggerService.updateTrigger(triggerId, {
+      ...data,
+      description: data.description ?? undefined,
+    });
 
     res.json(trigger);
   } catch (error: any) {
@@ -177,4 +187,5 @@ router.delete('/:triggerId', async (req, res) => {
 });
 
 export default router;
+
 
