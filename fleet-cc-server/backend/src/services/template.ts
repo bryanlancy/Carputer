@@ -32,7 +32,7 @@ export class TemplateService {
       try {
         // Handle format pipes (e.g., {{timestamp|format:YYYY-MM-DD}})
         if (expression.includes('|')) {
-          const [variablePath, ...pipeParts] = expression.split('|').map(s => s.trim());
+          const [variablePath, ...pipeParts] = expression.split('|').map((s: string) => s.trim());
           const value = this.getNestedValue(data, variablePath);
 
           // Process pipes
@@ -180,4 +180,5 @@ export class TemplateService {
     };
   }
 }
+
 

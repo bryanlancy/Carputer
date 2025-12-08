@@ -221,9 +221,8 @@ export class NotificationService {
       device_id: deviceId,
     };
 
-    if (options.unreadOnly) {
-      where.read = false;
-    }
+    // Note: read status is now handled in UserNotification, not Notification
+    // This method can't filter by read status anymore
 
     const notifications = await this.prisma.notification.findMany({
       where,
@@ -263,9 +262,8 @@ export class NotificationService {
   ): Promise<any[]> {
     const where: any = {};
 
-    if (options.unreadOnly) {
-      where.read = false;
-    }
+    // Note: read status is now handled in UserNotification, not Notification
+    // This method can't filter by read status anymore
 
     if (options.deviceId) {
       where.device_id = options.deviceId;
@@ -312,54 +310,38 @@ export class NotificationService {
 
   /**
    * Mark notification as read
+   * @deprecated Use UserNotification methods instead - read status is now per-user
    */
   async markAsRead(notificationId: number): Promise<any> {
-    return this.prisma.notification.update({
-      where: { id: notificationId },
-      data: {
-        read: true,
-        read_at: new Date(),
-      },
-    });
+    // This method is deprecated - read status is now in UserNotification
+    throw new Error('markAsRead is deprecated. Use UserNotification methods instead.');
   }
 
   /**
    * Mark all notifications as read for a device
+   * @deprecated Use UserNotification methods instead - read status is now per-user
    */
   async markAllAsRead(deviceId: number): Promise<{ count: number }> {
-    return this.prisma.notification.updateMany({
-      where: {
-        device_id: deviceId,
-        read: false,
-      },
-      data: {
-        read: true,
-        read_at: new Date(),
-      },
-    });
+    // This method is deprecated - read status is now in UserNotification
+    throw new Error('markAllAsRead is deprecated. Use UserNotification methods instead.');
   }
 
   /**
    * Get unread notification count for a device
+   * @deprecated Use UserNotification methods instead - read status is now per-user
    */
   async getUnreadCount(deviceId: number): Promise<number> {
-    return this.prisma.notification.count({
-      where: {
-        device_id: deviceId,
-        read: false,
-      },
-    });
+    // This method is deprecated - read status is now in UserNotification
+    throw new Error('getUnreadCount is deprecated. Use UserNotification methods instead.');
   }
 
   /**
    * Get unread notification count for all devices
+   * @deprecated Use UserNotification methods instead - read status is now per-user
    */
   async getTotalUnreadCount(): Promise<number> {
-    return this.prisma.notification.count({
-      where: {
-        read: false,
-      },
-    });
+    // This method is deprecated - read status is now in UserNotification
+    throw new Error('getTotalUnreadCount is deprecated. Use UserNotification methods instead.');
   }
 
   // ============================================
@@ -410,7 +392,6 @@ export class NotificationService {
         title,
         message: options.message || null,
         metadata: options.metadata || null,
-        read: false,
       },
       include: {
         device: {

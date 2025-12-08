@@ -54,13 +54,13 @@ export class WiringService {
       update: {
         nodes: data.nodes,
         edges: data.edges,
-        viewport: data.viewport || null,
+        viewport: data.viewport ?? null,
       },
       create: {
         rule_id: ruleId,
         nodes: data.nodes,
         edges: data.edges,
-        viewport: data.viewport || null,
+        viewport: data.viewport ?? null,
       },
     });
   }
@@ -242,4 +242,5 @@ export class WiringService {
     });
   }
 }
+
 
