@@ -1,0 +1,35 @@
+.wiringCanvas {
+  width: 100%;
+  height: 600px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f9fafb;
+
+  // Override React Flow styles using :global() syntax
+  :global(.react-flow__node) {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  :global(.react-flow__handle) {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+  }
+
+  :global(.react-flow__edge.react-flow__edge-selected .react-flow__edge-path) {
+    stroke: #3b82f6;
+    stroke-width: 3;
+  }
+}
+
+.flow {
+  width: 100%;
+  height: 100%;
+}
+
