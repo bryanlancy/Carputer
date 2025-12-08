@@ -26,7 +26,7 @@ This document tracks the remaining tasks for completing the notification templat
 ## Remaining Tasks
 
 ### 1. WiringCanvas Component with React Flow
-**Status:** Pending
+**Status:** ✅ Completed
 **Priority:** Medium
 **Description:** Create a React Flow-based canvas component for visual trigger-to-event wiring.
 
@@ -51,7 +51,7 @@ This document tracks the remaining tasks for completing the notification templat
 - Store wiring configuration via `/api/admin/wiring/:ruleId` endpoint
 
 ### 2. Schema Validation Utilities
-**Status:** Pending
+**Status:** ✅ Completed
 **Priority:** Medium
 **Description:** Create utility functions to validate JSON Schemas and check if trigger outputs satisfy event inputs.
 
@@ -69,7 +69,7 @@ This document tracks the remaining tasks for completing the notification templat
 - Should match backend validation logic in `WiringService.validateConnection()`
 
 ### 3. WiringManager Component and Admin Page
-**Status:** Pending
+**Status:** ✅ Completed
 **Priority:** Medium
 **Description:** Create a wiring management UI for configuring trigger-to-event connections.
 
@@ -89,8 +89,8 @@ This document tracks the remaining tasks for completing the notification templat
 - Should fetch triggers and events from `/api/admin/triggers` and `/api/admin/events`
 - Use WiringCanvas component for visual editing
 
-### 4. Template Editor Enhancement (Optional)
-**Status:** Pending
+### 4. Template Editor Enhancement
+**Status:** ✅ Completed
 **Priority:** Low
 **Description:** Enhance the message template editor with variable hints and preview.
 
