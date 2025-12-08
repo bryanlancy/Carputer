@@ -25,7 +25,7 @@ Central web service for managing the Carputer fleet, tracking device status, orc
 
 ```bash
 # Run setup script (creates .env, installs dependencies, builds images)
-./setup.sh
+./carputer.sh
 
 # Or manually:
 # 1. Copy .env.example to .env and configure
@@ -125,7 +125,7 @@ For **self-hosted Supabase**, you need to generate the keys yourself. The `JWT_S
 ```
 
 **Manual setup:**
-1. The `setup.sh` script generates `JWT_SECRET` automatically
+1. The `carputer.sh` script generates `JWT_SECRET` automatically
 2. Set `SUPABASE_SERVICE_ROLE_KEY` in `backend/.env` to the same value as `JWT_SECRET`
 3. Set `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `frontend/.env` to the same value as `JWT_SECRET`
 4. Make sure `docker compose.yml` uses the same `JWT_SECRET` for the `auth` and `realtime` services
@@ -135,7 +135,7 @@ For **self-hosted Supabase**, you need to generate the keys yourself. The `JWT_S
 - `SUPABASE_SERVICE_ROLE_KEY` = same as `JWT_SECRET` (gives full admin access)
 - `SUPABASE_ANON_KEY` = same as `JWT_SECRET` (for client-side access)
 
-The `setup.sh` script will automatically create these files from the examples and generate secure secrets.
+The `carputer.sh` script will automatically create these files from the examples and generate secure secrets.
 
 ## Documentation
 
