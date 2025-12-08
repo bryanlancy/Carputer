@@ -172,7 +172,7 @@ else
     echo "  - $BACKEND_ENV_FILE"
     echo "  - $FRONTEND_ENV_FILE"
     echo ""
-    echo "You can create them by running: ./fleet-cc-server/setup.sh"
+    echo "You can create them by running: ./fleet-cc-server/carputer.sh"
     exit 1
 fi
 
