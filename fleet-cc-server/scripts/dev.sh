@@ -221,7 +221,33 @@ function show_status() {
 # Main command handler
 case "${1:-}" in
     setup)
-        ./setup.sh
+        # Get the directory where this script is located
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        SETUP="$SCRIPT_DIR/setup"
+        
+        # Check if setup executable exists, if not try to build it
+        if [ ! -f "$SETUP" ]; then
+            echo -e "${YELLOW}⚠️  setup executable not found. Attempting to build...${NC}"
+            if [ -f "$SCRIPT_DIR/cc-server/Makefile.carputer" ]; then
+                cd "$SCRIPT_DIR/cc-server"
+                make -f Makefile.carputer
+                cd - > /dev/null
+            elif [ -f "$SCRIPT_DIR/cc-server/CMakeLists.txt" ]; then
+                cd "$SCRIPT_DIR/cc-server"
+                mkdir -p build
+                cd build
+                cmake ..
+                make
+                cd - > /dev/null
+            else
+                echo -e "${RED}❌ Could not find build files for setup${NC}"
+                echo -e "${YELLOW}   Please build setup first. See scripts/cc-server/BUILD.md${NC}"
+                exit 1
+            fi
+        fi
+        
+        # Run setup
+        "$SETUP"
         ;;
     start)
         start_services

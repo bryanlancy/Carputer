@@ -1,0 +1,31 @@
+# Makefile for building carputer C++ application
+# Requires FTXUI library to be installed
+
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2
+LDFLAGS = -lftxui-component -lftxui-dom -lftxui-screen
+
+# Check if FTXUI is installed via pkg-config
+FTXUI_CFLAGS = $(shell pkg-config --cflags ftxui-component 2>/dev/null)
+FTXUI_LIBS = $(shell pkg-config --libs ftxui-component 2>/dev/null)
+
+ifeq ($(FTXUI_CFLAGS),)
+$(error FTXUI library not found. Please install it: https://github.com/ArthurSonzogni/FTXUI)
+endif
+
+TARGET = ../setup
+SRC = cc-server.cpp
+
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(CXX) $(CXXFLAGS) $(FTXUI_CFLAGS) -o $(TARGET) $(SRC) $(FTXUI_LIBS)
+
+clean:
+	rm -f $(TARGET)
+
+install: $(TARGET)
+	cp $(TARGET) /usr/local/bin/
+
+.PHONY: all clean install
+
