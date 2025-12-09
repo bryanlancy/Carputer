@@ -1,0 +1,35 @@
+.dataTypeIcon {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	cursor: help;
+
+	.icon {
+		display: inline-block;
+		line-height: 1;
+	}
+
+	.label {
+		font-size: 0.75em;
+		color: var(--text-secondary, #666);
+	}
+
+	&.small {
+		font-size: 0.875rem;
+	}
+
+	&.medium {
+		font-size: 1rem;
+	}
+
+	&.large {
+		font-size: 1.25rem;
+	}
+}
+
+.dataTypeIcons {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
