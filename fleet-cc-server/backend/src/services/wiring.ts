@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-import { TriggerService } from './trigger';
-import { EventService } from './event';
+import { PrismaClient } from '@prisma/client'
+import { TriggerService } from './trigger'
+import { EventService } from './event'
 
 /**
  * Wiring Service
@@ -10,237 +10,285 @@ import { EventService } from './event';
  */
 
 export class WiringService {
-  constructor(
-    private prisma: PrismaClient,
-    private triggerService: TriggerService,
-    private eventService: EventService
-  ) {}
+	constructor(
+		private prisma: PrismaClient,
+		private triggerService: TriggerService,
+		private eventService: EventService
+	) {}
 
-  /**
-   * Get wiring configuration for a rule
-   */
-  async getWiringConfiguration(ruleId: number): Promise<any | null> {
-    return this.prisma.wiringConfiguration.findUnique({
-      where: { rule_id: ruleId },
-      include: {
-        rule: true,
-      },
-    });
-  }
+	/**
+	 * Get wiring configuration for a workspace
+	 */
+	async getWiringConfiguration(workspaceId: number): Promise<any | null> {
+		return this.prisma.wiringConfiguration.findUnique({
+			where: { workspace_id: workspaceId },
+			include: {
+				workspace: true,
+			},
+		})
+	}
 
-  /**
-   * Save wiring configuration for a rule
-   */
-  async saveWiringConfiguration(
-    ruleId: number,
-    data: {
-      nodes: any; // React Flow nodes
-      edges: any; // React Flow edges
-      viewport?: any; // Viewport position/zoom
-    }
-  ): Promise<any> {
-    // Validate rule exists
-    const rule = await this.prisma.notificationRule.findUnique({
-      where: { id: ruleId },
-    });
+	/**
+	 * Save wiring configuration for a workspace
+	 */
+	async saveWiringConfiguration(
+		workspaceId: number,
+		data: {
+			nodes: any // React Flow nodes
+			edges: any // React Flow edges
+			viewport?: any // Viewport position/zoom
+			node_config?: any // Per-node configuration
+		}
+	): Promise<any> {
+		// Validate workspace exists
+		const workspace = await this.prisma.workspace.findUnique({
+			where: { id: workspaceId },
+		})
 
-    if (!rule) {
-      throw new Error(`Notification rule ${ruleId} not found`);
-    }
+		if (!workspace) {
+			throw new Error(`Workspace ${workspaceId} not found`)
+		}
 
-    // Upsert wiring configuration
-    return this.prisma.wiringConfiguration.upsert({
-      where: { rule_id: ruleId },
-      update: {
-        nodes: data.nodes,
-        edges: data.edges,
-        viewport: data.viewport ?? null,
-      },
-      create: {
-        rule_id: ruleId,
-        nodes: data.nodes,
-        edges: data.edges,
-        viewport: data.viewport ?? null,
-      },
-    });
-  }
+		// Upsert wiring configuration
+		return this.prisma.wiringConfiguration.upsert({
+			where: { workspace_id: workspaceId },
+			update: {
+				nodes: data.nodes,
+				edges: data.edges,
+				viewport: data.viewport ?? null,
+				node_config: data.node_config ?? null,
+			},
+			create: {
+				workspace_id: workspaceId,
+				nodes: data.nodes,
+				edges: data.edges,
+				viewport: data.viewport ?? null,
+				node_config: data.node_config ?? null,
+			},
+		})
+	}
 
-  /**
-   * Get all trigger-event connections for a rule
-   */
-  async getConnectionsForRule(ruleId: number): Promise<any[]> {
-    return this.prisma.triggerEventConnection.findMany({
-      where: { rule_id: ruleId },
-      include: {
-        trigger: true,
-        event: true,
-      },
-    });
-  }
+	/**
+	 * Get all trigger-event connections for a workspace
+	 * Note: This method is kept for backward compatibility but connections are now stored in edges
+	 */
+	async getConnectionsForWorkspace(workspaceId: number): Promise<any[]> {
+		// Get wiring configuration to extract connections from edges
+		const wiring = await this.getWiringConfiguration(workspaceId)
+		if (!wiring || !wiring.edges) {
+			return []
+		}
 
-  /**
-   * Create a trigger-event connection
-   */
-  async createConnection(
-    ruleId: number,
-    data: {
-      trigger_id: number;
-      event_id: number;
-      connection_config?: any;
-      enabled?: boolean;
-    }
-  ): Promise<any> {
-    // Validate rule exists
-    const rule = await this.prisma.notificationRule.findUnique({
-      where: { id: ruleId },
-    });
+		// Extract connection information from edges
+		// This is a simplified version - in practice, edges contain the connection info
+		const edges = wiring.edges as any[]
+		return edges.map(edge => ({
+			id: edge.id,
+			trigger_id: this.extractTriggerIdFromNodeId(edge.source),
+			event_id: this.extractEventIdFromNodeId(edge.target),
+			connection_config: edge.data?.connection_config || null,
+			enabled: edge.data?.enabled !== false,
+		}))
+	}
 
-    if (!rule) {
-      throw new Error(`Notification rule ${ruleId} not found`);
-    }
+	/**
+	 * Helper to extract trigger ID from node ID (e.g., "trigger-123" -> 123)
+	 */
+	private extractTriggerIdFromNodeId(nodeId: string): number | null {
+		const match = nodeId.match(/^trigger-(\d+)$/)
+		return match ? parseInt(match[1]) : null
+	}
 
-    // Validate trigger exists
-    const trigger = await this.triggerService.getTriggerById(data.trigger_id);
-    if (!trigger) {
-      throw new Error(`Trigger ${data.trigger_id} not found`);
-    }
+	/**
+	 * Helper to extract event ID from node ID (e.g., "event-456" -> 456)
+	 */
+	private extractEventIdFromNodeId(nodeId: string): number | null {
+		const match = nodeId.match(/^event-(\d+)$/)
+		return match ? parseInt(match[1]) : null
+	}
 
-    // Validate event exists
-    const event = await this.eventService.getEventById(data.event_id);
-    if (!event) {
-      throw new Error(`Event ${data.event_id} not found`);
-    }
+	/**
+	 * Create a trigger-event connection
+	 * Note: This is now handled through saveWiringConfiguration with edges
+	 * Kept for backward compatibility
+	 */
+	async createConnection(
+		workspaceId: number,
+		data: {
+			trigger_id: number
+			event_id: number
+			connection_config?: any
+			enabled?: boolean
+		}
+	): Promise<any> {
+		// Validate workspace exists
+		const workspace = await this.prisma.workspace.findUnique({
+			where: { id: workspaceId },
+		})
 
-    // Validate schema compatibility
-    const validation = this.validateConnection(trigger, event);
-    if (!validation.valid) {
-      throw new Error(`Invalid connection: ${validation.error}`);
-    }
+		if (!workspace) {
+			throw new Error(`Workspace ${workspaceId} not found`)
+		}
 
-    return this.prisma.triggerEventConnection.create({
-      data: {
-        rule_id: ruleId,
-        trigger_id: data.trigger_id,
-        event_id: data.event_id,
-        connection_config: data.connection_config || null,
-        enabled: data.enabled !== undefined ? data.enabled : true,
-      },
-    });
-  }
+		// Validate trigger exists
+		const trigger = await this.triggerService.getTriggerById(
+			data.trigger_id
+		)
+		if (!trigger) {
+			throw new Error(`Trigger ${data.trigger_id} not found`)
+		}
 
-  /**
-   * Update a connection
-   */
-  async updateConnection(
-    connectionId: number,
-    data: {
-      connection_config?: any;
-      enabled?: boolean;
-    }
-  ): Promise<any> {
-    return this.prisma.triggerEventConnection.update({
-      where: { id: connectionId },
-      data: {
-        ...(data.connection_config !== undefined && { connection_config: data.connection_config }),
-        ...(data.enabled !== undefined && { enabled: data.enabled }),
-      },
-    });
-  }
+		// Validate event exists
+		const event = await this.eventService.getEventById(data.event_id)
+		if (!event) {
+			throw new Error(`Event ${data.event_id} not found`)
+		}
 
-  /**
-   * Delete a connection
-   */
-  async deleteConnection(connectionId: number): Promise<void> {
-    await this.prisma.triggerEventConnection.delete({
-      where: { id: connectionId },
-    });
-  }
+		// Validate schema compatibility
+		const validation = this.validateConnection(trigger, event)
+		if (!validation.valid) {
+			throw new Error(`Invalid connection: ${validation.error}`)
+		}
 
-  /**
-   * Validate that a trigger's output schema satisfies an event's input schema
-   * Returns true if the trigger can provide all required data for the event
-   */
-  validateConnection(trigger: any, event: any): {
-    valid: boolean;
-    error?: string;
-  } {
-    if (!trigger || !event) {
-      return { valid: false, error: 'Trigger or event not found' };
-    }
+		// Note: Connections are now stored in edges within wiring_configurations
+		// This method creates a connection entry for backward compatibility
+		// In practice, connections should be managed through saveWiringConfiguration
+		throw new Error(
+			'createConnection is deprecated. Use saveWiringConfiguration with edges instead.'
+		)
+	}
 
-    if (!trigger.output_schema || !event.input_schema) {
-      return { valid: false, error: 'Trigger or event schema not found' };
-    }
+	/**
+	 * Update a connection
+	 */
+	async updateConnection(
+		connectionId: number,
+		data: {
+			connection_config?: any
+			enabled?: boolean
+		}
+	): Promise<any> {
+		return this.prisma.triggerEventConnection.update({
+			where: { id: connectionId },
+			data: {
+				...(data.connection_config !== undefined && {
+					connection_config: data.connection_config,
+				}),
+				...(data.enabled !== undefined && { enabled: data.enabled }),
+			},
+		})
+	}
 
-    const triggerOutput = trigger.output_schema;
-    const eventInput = event.input_schema;
+	/**
+	 * Delete a connection
+	 */
+	async deleteConnection(connectionId: number): Promise<void> {
+		await this.prisma.triggerEventConnection.delete({
+			where: { id: connectionId },
+		})
+	}
 
-    // Both must be object types
-    if (triggerOutput.type !== 'object' || eventInput.type !== 'object') {
-      return { valid: false, error: 'Schemas must be object types' };
-    }
+	/**
+	 * Validate that a trigger's output schema satisfies an event's input schema
+	 * Returns true if the trigger can provide all required data for the event
+	 */
+	validateConnection(
+		trigger: any,
+		event: any
+	): {
+		valid: boolean
+		error?: string
+	} {
+		if (!trigger || !event) {
+			return { valid: false, error: 'Trigger or event not found' }
+		}
 
-    // Check that trigger output provides all required event inputs
-    if (eventInput.required && Array.isArray(eventInput.required)) {
-      const triggerProperties = triggerOutput.properties || {};
-      const eventRequired = eventInput.required;
+		if (!trigger.output_schema || !event.input_schema) {
+			return { valid: false, error: 'Trigger or event schema not found' }
+		}
 
-      for (const requiredProp of eventRequired) {
-        // Check if trigger output has this property
-        if (!(requiredProp in triggerProperties)) {
-          // Check if it's a nested property (e.g., device.name)
-          const hasNested = this.hasNestedProperty(triggerProperties, requiredProp);
-          if (!hasNested) {
-            return {
-              valid: false,
-              error: `Trigger output does not provide required property: ${requiredProp}`,
-            };
-          }
-        }
-      }
-    }
+		const triggerOutput = trigger.output_schema
+		const eventInput = event.input_schema
 
-    return { valid: true };
-  }
+		// Both must be object types
+		if (triggerOutput.type !== 'object' || eventInput.type !== 'object') {
+			return { valid: false, error: 'Schemas must be object types' }
+		}
 
-  /**
-   * Check if a nested property exists in the schema
-   * Handles cases like "device.name" where device is an object
-   */
-  private hasNestedProperty(properties: any, path: string): boolean {
-    const parts = path.split('.');
-    let current = properties;
+		// Check that trigger output provides all required event inputs
+		if (eventInput.required && Array.isArray(eventInput.required)) {
+			const triggerProperties = triggerOutput.properties || {}
+			const eventRequired = eventInput.required
 
-    for (const part of parts) {
-      if (!current || typeof current !== 'object') {
-        return false;
-      }
-      if (part in current) {
-        current = current[part];
-      } else {
-        // Check if any property is an object that might contain this
-        for (const key in current) {
-          const prop = current[key];
-          if (prop && typeof prop === 'object' && prop.type === 'object') {
-            // This is an object type, it might contain the nested property
-            return true; // Optimistic - assume object types can contain anything
-          }
-        }
-        return false;
-      }
-    }
+			for (const requiredProp of eventRequired) {
+				// Check if trigger output has this property
+				if (!(requiredProp in triggerProperties)) {
+					// Check if it's a nested property (e.g., device.name)
+					const hasNested = this.hasNestedProperty(
+						triggerProperties,
+						requiredProp
+					)
+					if (!hasNested) {
+						return {
+							valid: false,
+							error: `Trigger output does not provide required property: ${requiredProp}`,
+						}
+					}
+				}
+			}
+		}
 
-    return true;
-  }
+		return { valid: true }
+	}
 
-  /**
-   * Delete all connections for a rule
-   */
-  async deleteConnectionsForRule(ruleId: number): Promise<void> {
-    await this.prisma.triggerEventConnection.deleteMany({
-      where: { rule_id: ruleId },
-    });
-  }
+	/**
+	 * Check if a nested property exists in the schema
+	 * Handles cases like "device.name" where device is an object
+	 */
+	private hasNestedProperty(properties: any, path: string): boolean {
+		const parts = path.split('.')
+		let current = properties
+
+		for (const part of parts) {
+			if (!current || typeof current !== 'object') {
+				return false
+			}
+			if (part in current) {
+				current = current[part]
+			} else {
+				// Check if any property is an object that might contain this
+				for (const key in current) {
+					const prop = current[key]
+					if (
+						prop &&
+						typeof prop === 'object' &&
+						prop.type === 'object'
+					) {
+						// This is an object type, it might contain the nested property
+						return true // Optimistic - assume object types can contain anything
+					}
+				}
+				return false
+			}
+		}
+
+		return true
+	}
+
+	/**
+	 * Delete all connections for a workspace
+	 * Note: This is now handled by clearing edges in saveWiringConfiguration
+	 */
+	async deleteConnectionsForWorkspace(workspaceId: number): Promise<void> {
+		// Clear edges in wiring configuration
+		const wiring = await this.getWiringConfiguration(workspaceId)
+		if (wiring) {
+			await this.saveWiringConfiguration(workspaceId, {
+				nodes: wiring.nodes as any,
+				edges: [],
+				viewport: wiring.viewport as any,
+				node_config: wiring.node_config as any,
+			})
+		}
+	}
 }
-
-

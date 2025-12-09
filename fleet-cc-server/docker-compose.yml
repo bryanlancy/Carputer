@@ -36,10 +36,16 @@ services:
             POSTGRES_DB: ${POSTGRES_DB}
             POSTGRES_USER: ${POSTGRES_USER}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            # Realtime configuration
+            SUPABASE_REALTIME_URL: http://realtime:4000
+            # Disable features that require additional services
+            DISABLE_TELEMETRY: 'true'
         depends_on:
             postgres:
                 condition: service_healthy
             meta:
+                condition: service_started
+            realtime:
                 condition: service_started
         networks:
             - fleet-network
@@ -50,6 +56,9 @@ services:
         container_name: fleet-cc-meta
         ports:
             - '8081:8080'
+        entrypoint: ['/bin/sh', '/scripts/meta-entrypoint.sh']
+        volumes:
+            - ./scripts/meta-entrypoint.sh:/scripts/meta-entrypoint.sh:ro
         environment:
             PG_META_PORT: 8080
             PG_META_DB_HOST: postgres
@@ -69,7 +78,7 @@ services:
         container_name: fleet-cc-auth
         ports:
             - '9999:9999'
-        entrypoint: ["/bin/sh", "/scripts/gotrue-entrypoint.sh"]
+        entrypoint: ['/bin/sh', '/scripts/gotrue-entrypoint.sh']
         volumes:
             - ./scripts/gotrue-entrypoint.sh:/scripts/gotrue-entrypoint.sh:ro
         environment:
@@ -116,6 +125,23 @@ services:
         networks:
             - fleet-network
 
+    # Redis (for scheduled notifications and job queues)
+    redis:
+        image: redis:7-alpine
+        container_name: fleet-cc-redis
+        ports:
+            - '6379:6379'
+        volumes:
+            - redis_data:/data
+        command: redis-server --appendonly yes
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        networks:
+            - fleet-network
+
     # API Server (Node.js backend)
     api:
         build:
@@ -124,7 +150,7 @@ services:
         container_name: fleet-cc-api
         ports:
             - '${API_PORT}:3001'
-        entrypoint: ["/bin/sh", "/scripts/api-entrypoint.sh"]
+        entrypoint: ['/bin/sh', '/scripts/api-entrypoint.sh']
         volumes:
             - ./backend:/app
             - ./scripts/api-entrypoint.sh:/scripts/api-entrypoint.sh:ro
@@ -138,7 +164,7 @@ services:
             POSTGRES_PORT: 5432
             NODE_ENV: ${NODE_ENV}
             PORT: 3001
-            DOCKER_ENV: "true"
+            DOCKER_ENV: 'true'
             SUPABASE_URL: ${SUPABASE_URL}
             SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
             JWT_SECRET: ${JWT_SECRET}
@@ -151,6 +177,8 @@ services:
                 condition: service_healthy
             realtime:
                 condition: service_started
+            redis:
+                condition: service_healthy
         networks:
             - fleet-network
         command: sh -c "npm install && npx prisma generate && npm run dev"
@@ -179,10 +207,11 @@ services:
             - api
         networks:
             - fleet-network
-        command: npm run dev
+        command: npx next dev --webpack
 
 volumes:
     postgres_data:
+    redis_data:
     frontend_node_modules:
     frontend_next:
     backend_node_modules:

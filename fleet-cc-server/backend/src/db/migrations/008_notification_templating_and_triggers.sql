@@ -136,3 +136,4 @@ INSERT INTO events (event_code, event_name, description, input_schema, handler_t
 ON CONFLICT (event_code) DO NOTHING;
 
 
+
