@@ -1,37 +1,44 @@
 {
-  "name": "fleet-cc-frontend",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "dev:turbo": "next dev --turbo",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.38.4",
-    "axios": "^1.6.2",
-    "d3": "^7.8.5",
-    "date-fns": "^3.0.6",
-    "gsap": "^3.12.2",
-    "next": "14.0.4",
-    "next-swagger-doc": "^0.4.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "reactflow": "^11.11.4",
-    "recharts": "^2.10.3",
-    "swagger-ui-react": "^5.30.2"
-  },
-  "devDependencies": {
-    "@types/d3": "^7.4.3",
-    "@types/node": "^20.10.5",
-    "@types/react": "^18.2.45",
-    "@types/react-dom": "^18.2.18",
-    "@types/swagger-ui-react": "^5.18.0",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "14.0.4",
-    "sass": "^1.69.5",
-    "typescript": "^5.3.3"
-  }
+	"name": "fleet-cc-frontend",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"dev": "next dev",
+		"dev:turbo": "next dev --turbo",
+		"build": "next build",
+		"start": "next start",
+		"lint": "next lint",
+		"lint:direct": "eslint . --ext .js,.jsx,.ts,.tsx"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.38.4",
+		"axios": "^1.6.2",
+		"d3": "^7.8.5",
+		"date-fns": "^3.0.6",
+		"gsap": "^3.12.2",
+		"next": "16.0.7",
+		"next-swagger-doc": "^0.4.1",
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0",
+		"reactflow": "^11.11.4",
+		"recharts": "^2.10.3",
+		"swagger-ui-react": "^5.30.2"
+	},
+	"devDependencies": {
+		"@eslint/eslintrc": "^3.3.3",
+		"@eslint/js": "^9.39.1",
+		"@next/eslint-plugin-next": "^16.0.8",
+		"@types/d3": "^7.4.3",
+		"@types/node": "^20.10.5",
+		"@types/react": "^18.2.45",
+		"@types/react-dom": "^18.2.18",
+		"@types/swagger-ui-react": "^5.18.0",
+		"eslint": "^9.0.0",
+		"eslint-config-next": "16.0.7",
+		"eslint-plugin-react": "^7.37.5",
+		"eslint-plugin-react-hooks": "^7.0.1",
+		"sass": "^1.69.5",
+		"typescript": "^5.3.3",
+		"typescript-eslint": "^8.49.0"
+	}
 }
