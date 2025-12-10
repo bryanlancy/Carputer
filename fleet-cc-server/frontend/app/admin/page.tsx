@@ -34,39 +34,22 @@ export default function AdminPage() {
 		}
 
 		try {
-			// Verify token and check admin role by trying to access an admin endpoint
+			// Verify admin access using the dedicated verify endpoint
 			const apiUrl = getApiUrl()
-			try {
-				const controller = new AbortController()
-				const timeoutId = setTimeout(() => controller.abort(), 5000)
+			const controller = new AbortController()
+			const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-				const response = await fetch(
-					`${apiUrl}/api/admin/notifications/types`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.access_token}`,
-						},
-						signal: controller.signal,
-					}
-				)
+			const response = await fetch(`${apiUrl}/api/admin/verify`, {
+				headers: {
+					Authorization: `Bearer ${session.access_token}`,
+				},
+				signal: controller.signal,
+			})
 
-				clearTimeout(timeoutId)
+			clearTimeout(timeoutId)
 
-				if (response.status === 401 || response.status === 403) {
-					setIsAuthorized(false)
-					setLoading(false)
-					return
-				}
-
-				if (response.ok) {
-					setIsAuthorized(true)
-				} else {
-					setIsAuthorized(false)
-				}
-			} catch (fetchError: any) {
-				// Generic error - don't reveal details
-				setIsAuthorized(false)
-			}
+			// 200 = admin, 403 = not admin, 401 = not authenticated
+			setIsAuthorized(response.status === 200)
 		} catch (error: any) {
 			// Generic error - don't reveal details
 			console.error('Auth check error:', error)

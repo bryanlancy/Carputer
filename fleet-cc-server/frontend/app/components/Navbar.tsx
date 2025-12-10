@@ -1,45 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl } from '../utils/api'
 import NotificationFeed, { useNotificationCount } from './NotificationFeed'
 import styles from './Navbar.module.scss'
 
 export default function Navbar() {
-  const [isAdmin, setIsAdmin] = useState(false)
   const [showNotificationFeed, setShowNotificationFeed] = useState(false)
-  const { user, session, signOut } = useAuth()
+  const { user, isAdmin, signOut } = useAuth()
   const pathname = usePathname()
   const unviewedCount = useNotificationCount()
-
-  useEffect(() => {
-    if (session) {
-      checkAdminStatus()
-    }
-  }, [session])
-
-  const checkAdminStatus = async () => {
-    if (!session) {
-      setIsAdmin(false)
-      return
-    }
-
-    try {
-      const apiUrl = getApiUrl()
-      const response = await fetch(`${apiUrl}/api/admin/notifications/types`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      })
-
-      setIsAdmin(response.ok || response.status === 200)
-    } catch (error) {
-      setIsAdmin(false)
-    }
-  }
 
   const handleSignOut = async () => {
     try {
