@@ -10,42 +10,40 @@ export class NotificationService {
   constructor(private prisma: PrismaClient) {}
 
   /**
-   * Get or create a notification type by code
+   * Get or create a notification by name
    */
-  async getOrCreateNotificationType(
-    typeCode: string,
+  async getOrCreateNotification(
+    name: string,
     options: {
-      typeName?: string;
       description?: string;
-      severity?: 'info' | 'warning' | 'error' | 'critical';
+      priority?: number;
       enabled?: boolean;
     } = {}
   ): Promise<any> {
-    if (!typeCode) {
-      throw new Error('Notification type code is required');
+    if (!name) {
+      throw new Error('Notification name is required');
     }
 
-    // Try to get existing notification type
-    let notificationType = await this.prisma.notificationType.findUnique({
-      where: { type_code: typeCode },
+    // Try to get existing notification
+    let notification = await this.prisma.notification.findUnique({
+      where: { name: name },
     });
 
-    if (notificationType) {
-      return notificationType;
+    if (notification) {
+      return notification;
     }
 
-    // Create new notification type
-    notificationType = await this.prisma.notificationType.create({
+    // Create new notification
+    notification = await this.prisma.notification.create({
       data: {
-        type_code: typeCode,
-        type_name: options.typeName || typeCode,
+        name: name,
         description: options.description || null,
-        severity: options.severity || 'info',
+        priority: options.priority || 0,
         enabled: options.enabled !== undefined ? options.enabled : true,
       },
     });
 
-    return notificationType;
+    return notification;
   }
 
   /**
@@ -66,50 +64,21 @@ export class NotificationService {
       throw new Error('Device ID and notification type code are required');
     }
 
-    // Get or create notification type
-    const notificationType = await this.getOrCreateNotificationType(typeCode);
+    // Get or create notification (using typeCode as name for backward compatibility)
+    const notificationType = await this.getOrCreateNotification(typeCode);
 
     if (!notificationType.enabled) {
-      throw new Error(`Notification type ${typeCode} is disabled`);
+      throw new Error(`Notification ${typeCode} is disabled`);
     }
 
     // Generate default title if not provided
     const title =
       options.title ||
-      `${notificationType.type_name} - Device ${deviceId}`;
+      `${notificationType.name} - Device ${deviceId}`;
 
-    // Create notification
-    const notification = await this.prisma.notification.create({
-      data: {
-        device_id: deviceId,
-        notification_type_id: notificationType.id,
-        device_log_id: options.deviceLogId || null,
-        title,
-        message: options.message || null,
-        metadata: options.metadata || null,
-        show_in_feed: options.show_in_feed !== undefined ? options.show_in_feed : true,
-      },
-      include: {
-        device: {
-          select: {
-            id: true,
-            device_id: true,
-            hostname: true,
-            status: true,
-          },
-        },
-        notification_type: true,
-        device_log: {
-          select: {
-            id: true,
-            log_type: true,
-            uploaded_at: true,
-          },
-        },
-      },
-    });
-
-    return notification;
+    // Note: notification_instances table has been removed
+    // This method may need to be refactored based on new requirements
+    throw new Error('createNotification is deprecated - notification_instances table has been removed');
   }
 
   /**
@@ -224,26 +193,9 @@ export class NotificationService {
     // Note: read status is now handled in UserNotification, not Notification
     // This method can't filter by read status anymore
 
-    const notifications = await this.prisma.notification.findMany({
-      where,
-      include: {
-        notification_type: true,
-        device_log: {
-          select: {
-            id: true,
-            log_type: true,
-            uploaded_at: true,
-          },
-        },
-      },
-      orderBy: {
-        [options.orderBy || 'created_at']: options.order || 'desc',
-      },
-      take: options.limit || 100,
-      skip: options.offset || 0,
-    });
-
-    return notifications;
+    // Note: notification_instances table has been removed
+    // This method may need to be refactored based on new requirements
+    throw new Error('getDeviceNotifications is deprecated - notification_instances table has been removed');
   }
 
   /**
@@ -270,42 +222,18 @@ export class NotificationService {
     }
 
     if (options.typeCode) {
-      const notificationType = await this.prisma.notificationType.findUnique({
-        where: { type_code: options.typeCode },
+      const notificationType = await this.prisma.notification.findUnique({
+        where: { name: options.typeCode },
       });
       if (notificationType) {
-        where.notification_type_id = notificationType.id;
+        // Note: This method is deprecated, but keeping for backward compatibility
+        // where.notification_type_id = notificationType.id;
       }
     }
 
-    const notifications = await this.prisma.notification.findMany({
-      where,
-      include: {
-        device: {
-          select: {
-            id: true,
-            device_id: true,
-            hostname: true,
-            status: true,
-          },
-        },
-        notification_type: true,
-        device_log: {
-          select: {
-            id: true,
-            log_type: true,
-            uploaded_at: true,
-          },
-        },
-      },
-      orderBy: {
-        [options.orderBy || 'created_at']: options.order || 'desc',
-      },
-      take: options.limit || 100,
-      skip: options.offset || 0,
-    });
-
-    return notifications;
+    // Note: notification_instances table has been removed
+    // This method may need to be refactored based on new requirements
+    throw new Error('getAllNotifications is deprecated - notification_instances table has been removed');
   }
 
   /**
@@ -371,60 +299,9 @@ export class NotificationService {
       throw new Error('Notification type code is required');
     }
 
-    // Get or create notification type
-    const notificationType = await this.getOrCreateNotificationType(typeCode);
-
-    if (!notificationType.enabled) {
-      throw new Error(`Notification type ${typeCode} is disabled`);
-    }
-
-    // Generate default title if not provided
-    const title =
-      options.title ||
-      notificationType.type_name;
-
-    // Create notification (device_id is optional for user notifications)
-    const notification = await this.prisma.notification.create({
-      data: {
-        device_id: options.deviceId || 1, // Use a default device if none provided (existing system requires device_id)
-        notification_type_id: notificationType.id,
-        device_log_id: options.deviceLogId || null,
-        title,
-        message: options.message || null,
-        metadata: options.metadata || null,
-      },
-      include: {
-        device: {
-          select: {
-            id: true,
-            device_id: true,
-            hostname: true,
-            status: true,
-          },
-        },
-        notification_type: true,
-        device_log: {
-          select: {
-            id: true,
-            log_type: true,
-            uploaded_at: true,
-          },
-        },
-      },
-    });
-
-    // Link notification to users
-    for (const userId of userIds) {
-      await this.prisma.userNotification.create({
-        data: {
-          user_id: userId,
-          notification_id: notification.id,
-          viewed: false,
-        },
-      });
-    }
-
-    return notification;
+    // Note: notification_instances table has been removed
+    // This method may need to be refactored based on new requirements
+    throw new Error('createUserNotification is deprecated - notification_instances table has been removed');
   }
 
   /**
@@ -514,29 +391,11 @@ export class NotificationService {
       where.viewed = false;
     }
 
+    // Note: notifications table now stores templates, not instances
     const userNotifications = await this.prisma.userNotification.findMany({
       where,
       include: {
-        notification: {
-          include: {
-            device: {
-              select: {
-                id: true,
-                device_id: true,
-                hostname: true,
-                status: true,
-              },
-            },
-            notification_type: true,
-            device_log: {
-              select: {
-                id: true,
-                log_type: true,
-                uploaded_at: true,
-              },
-            },
-          },
-        },
+        notification: true,
       },
       orderBy: {
         [options.orderBy === 'viewed' ? 'viewed_at' : 'created_at']: options.order || 'desc',

@@ -604,19 +604,7 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 				},
 			},
 			include: {
-				notification: {
-					include: {
-						notification_type: true,
-						device: {
-							select: {
-								id: true,
-								device_id: true,
-								hostname: true,
-								status: true,
-							},
-						},
-					},
-				},
+				notification: true,
 			},
 			orderBy: {
 				created_at: 'desc',
@@ -624,13 +612,12 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 			take: limit,
 		})
 
-		// Format response
+		// Format response - notifications table now stores templates
 		const notifications = userNotifications.map((un) => ({
 			id: un.notification.id,
-			title: un.notification.title,
-			message: un.notification.message,
+			name: un.notification.name,
+			message_template: un.notification.message_template,
 			notification_type: un.notification.notification_type,
-			device: un.notification.device,
 			viewed: un.viewed,
 			viewed_at: un.viewed_at,
 			created_at: un.notification.created_at,

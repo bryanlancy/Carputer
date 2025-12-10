@@ -1,21 +1,21 @@
-import express from 'express';
-import { z } from 'zod';
-import { NotificationService } from '../../services/notification';
-import { NotificationRuleService } from '../../services/notificationRules';
-import { requireAuth } from '../../middleware/auth';
-import { requireAdmin } from '../../middleware/authorize';
+import express from 'express'
+import { z } from 'zod'
+import { NotificationService } from '../../services/notification'
+import { NotificationRuleService } from '../../services/notificationRules'
+import { requireAuth } from '../../middleware/auth'
+import { requireAdmin } from '../../middleware/authorize'
 
-const router = express.Router();
+const router = express.Router()
 
 // Apply authentication and admin authorization to all routes
-router.use(requireAuth);
-router.use(requireAdmin);
+router.use(requireAuth)
+router.use(requireAdmin)
 
 /**
  * @swagger
- * /api/admin/notifications/types:
+ * /api/admin/notifications:
  *   get:
- *     summary: Get all notification types (admin)
+ *     summary: Get all notifications (admin)
  *     tags: [Admin Notifications]
  *     security:
  *       - bearerAuth: []
@@ -33,29 +33,84 @@ router.use(requireAdmin);
  *       500:
  *         description: Internal server error
  */
-router.get('/types', async (req, res) => {
-  try {
-    const prisma = req.prisma;
-    const notificationService = new NotificationService(prisma);
+router.get('/', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
 
-    const types = await prisma.notificationType.findMany({
-      orderBy: {
-        type_code: 'asc',
-      },
-    });
+		const types = await prisma.notification.findMany({
+			orderBy: {
+				name: 'asc',
+			},
+		})
 
-    res.json(types);
-  } catch (error) {
-    console.error('Get notification types error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.json(types)
+	} catch (error) {
+		console.error('Get notification types error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
 /**
  * @swagger
- * /api/admin/notifications/types:
+ * /api/admin/notifications/preferences:
+ *   get:
+ *     summary: Get all user notification preferences (admin)
+ *     tags: [Admin Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of user notification preferences
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   user:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       full_name:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/preferences', async (req, res) => {
+	try {
+		const prisma = req.prisma
+
+		const preferences = await prisma.userNotificationPreferences.findMany({
+			include: {
+				user: {
+					select: {
+						id: true,
+						email: true,
+						full_name: true,
+					},
+				},
+			},
+		})
+
+		res.json(preferences)
+	} catch (error) {
+		console.error('Get notification preferences error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/admin/notifications:
  *   post:
- *     summary: Create notification type (admin)
+ *     summary: Create notification (admin)
  *     tags: [Admin Notifications]
  *     security:
  *       - bearerAuth: []
@@ -106,56 +161,66 @@ router.get('/types', async (req, res) => {
  *         description: Internal server error
  */
 const createTypeSchema = z.object({
-  type_code: z.string().min(1),
-  type_name: z.string().min(1),
-  description: z.string().optional().nullable(),
-  severity: z.enum(['info', 'warning', 'error', 'critical']).default('info'),
-  enabled: z.boolean().default(true),
-});
+	name: z.string().min(1),
+	description: z.string().optional().nullable(),
+	enabled: z.boolean().default(true),
+	notification_type: z.enum(['warning', 'alert', 'default', 'success']).default('default'),
+	target_users: z.any().optional().nullable(),
+	message_template: z.string().optional().nullable(),
+	priority: z.number().default(0),
+	variable_schema: z.any().optional().nullable(),
+})
 
-router.post('/types', async (req, res) => {
-  try {
-    const prisma = req.prisma;
-    const notificationService = new NotificationService(prisma);
+router.post('/', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
 
-    const data = createTypeSchema.parse(req.body);
+		const data = createTypeSchema.parse(req.body)
 
-    const type = await notificationService.getOrCreateNotificationType(
-      data.type_code,
-      {
-        typeName: data.type_name,
-        description: data.description ?? undefined,
-        severity: data.severity,
-        enabled: data.enabled,
-      }
-    );
+		// Create notification with all fields
+		const type = await prisma.notification.create({
+			data: {
+				name: data.name,
+				description: data.description ?? null,
+				enabled: data.enabled,
+				notification_type: data.notification_type || 'default',
+				target_users: data.target_users ?? null,
+				message_template: data.message_template ?? null,
+				priority: data.priority ?? 0,
+				variable_schema: data.variable_schema ?? null,
+			},
+		})
 
-    res.json(type);
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: error.errors });
-      return;
-    }
-    console.error('Create notification type error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.json(type)
+	} catch (error: any) {
+		if (error instanceof z.ZodError) {
+			res.status(400).json({
+				error: 'Validation error',
+				details: error.errors,
+			})
+			return
+		}
+		console.error('Create notification type error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
 /**
  * @swagger
- * /api/admin/notifications/types/{typeCode}:
+ * /api/admin/notifications/{id}:
  *   put:
- *     summary: Update notification type (admin)
+ *     summary: Update notification (admin)
  *     tags: [Admin Notifications]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: typeCode
+ *         name: id
  *         required: true
  *         schema:
- *           type: string
- *         description: Notification type code
+ *           type: integer
+ *         description: Notification type ID
  *     requestBody:
  *       required: true
  *       content:
@@ -163,19 +228,18 @@ router.post('/types', async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               type_name:
+ *               name:
  *                 type: string
  *                 description: Display name for the notification type
  *               description:
  *                 type: string
  *                 description: Optional description
- *               severity:
- *                 type: string
- *                 enum: [info, warning, error, critical]
- *                 description: Severity level
  *               enabled:
  *                 type: boolean
  *                 description: Whether the notification type is enabled
+ *               priority:
+ *                 type: integer
+ *                 description: Priority level
  *     responses:
  *       200:
  *         description: Notification type updated
@@ -197,54 +261,90 @@ router.post('/types', async (req, res) => {
  *         description: Internal server error
  */
 const updateTypeSchema = z.object({
-  type_name: z.string().min(1).optional(),
-  description: z.string().optional().nullable(),
-  severity: z.enum(['info', 'warning', 'error', 'critical']).optional(),
-  enabled: z.boolean().optional(),
-});
+	name: z.string().min(1).optional(),
+	description: z.string().optional().nullable(),
+	enabled: z.boolean().optional(),
+	notification_type: z.enum(['warning', 'alert', 'default', 'success']).optional(),
+	target_users: z.any().optional().nullable(),
+	message_template: z.string().optional().nullable(),
+	priority: z.number().optional(),
+	variable_schema: z.any().optional().nullable(),
+})
 
-router.put('/types/:typeCode', async (req, res) => {
-  try {
-    const prisma = req.prisma;
-    const { typeCode } = req.params;
-    const data = updateTypeSchema.parse(req.body);
+router.put('/:id', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const { id } = req.params
+		const data = updateTypeSchema.parse(req.body)
 
-    const type = await prisma.notificationType.update({
-      where: { type_code: typeCode },
-      data: {
-        ...(data.type_name && { type_name: data.type_name }),
-        ...(data.description !== undefined && { description: data.description ?? null }),
-        ...(data.severity && { severity: data.severity }),
-        ...(data.enabled !== undefined && { enabled: data.enabled }),
-      },
-    });
+		// Check if notification exists
+		const existing = await prisma.notification.findUnique({
+			where: { id: parseInt(id) },
+		})
 
-    res.json(type);
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: error.errors });
-      return;
-    }
-    console.error('Update notification type error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		if (!existing) {
+			return res.status(404).json({ error: 'Notification not found' })
+		}
+
+		const type = await prisma.notification.update({
+			where: { id: parseInt(id) },
+			data: {
+				...(data.name && { name: data.name }),
+				...(data.description !== undefined && {
+					description: data.description ?? null,
+				}),
+				...(data.enabled !== undefined && { enabled: data.enabled }),
+				...(data.notification_type !== undefined && {
+					notification_type: data.notification_type,
+				}),
+				...(data.target_users !== undefined && {
+					target_users: data.target_users ?? null,
+				}),
+				...(data.message_template !== undefined && {
+					message_template: data.message_template ?? null,
+				}),
+				...(data.priority !== undefined && {
+					priority: data.priority ?? 0,
+				}),
+				...(data.variable_schema !== undefined && {
+					variable_schema: data.variable_schema ?? null,
+				}),
+			},
+		})
+
+		res.json(type)
+	} catch (error: any) {
+		if (error instanceof z.ZodError) {
+			res.status(400).json({
+				error: 'Validation error',
+				details: error.errors,
+			})
+			return
+		}
+		if (error.code === 'P2025') {
+			// Prisma record not found
+			return res.status(404).json({ error: 'Notification not found' })
+		}
+		console.error('Update notification error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
 /**
  * @swagger
- * /api/admin/notifications/types/{typeCode}:
+ * /api/admin/notifications/{id}:
  *   delete:
- *     summary: Delete notification type (admin)
+ *     summary: Delete notification (admin)
  *     tags: [Admin Notifications]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: typeCode
+ *         name: id
  *         required: true
  *         schema:
- *           type: string
- *         description: Notification type code
+ *           type: integer
+ *         description: Notification type ID
  *     responses:
  *       200:
  *         description: Notification type deleted
@@ -262,76 +362,24 @@ router.put('/types/:typeCode', async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.delete('/types/:typeCode', async (req, res) => {
-  try {
-    const prisma = req.prisma;
-    const { typeCode } = req.params;
+router.delete('/:id', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const { id } = req.params
 
-    await prisma.notificationType.delete({
-      where: { type_code: typeCode },
-    });
+		await prisma.notification.delete({
+			where: { id: parseInt(id) },
+		})
 
-    res.json({ message: 'Notification type deleted' });
-  } catch (error: any) {
-    console.error('Delete notification type error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+		res.json({ message: 'Notification deleted' })
+	} catch (error: any) {
+		if (error.code === 'P2025') {
+			// Prisma record not found
+			return res.status(404).json({ error: 'Notification not found' })
+		}
+		console.error('Delete notification error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
 
-/**
- * @swagger
- * /api/admin/notifications/preferences:
- *   get:
- *     summary: Get all user notification preferences (admin)
- *     tags: [Admin Notifications]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of user notification preferences
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   user:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       email:
- *                         type: string
- *                       full_name:
- *                         type: string
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Internal server error
- */
-router.get('/preferences', async (req, res) => {
-  try {
-    const prisma = req.prisma;
-
-    const preferences = await prisma.userNotificationPreferences.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            full_name: true,
-          },
-        },
-      },
-    });
-
-    res.json(preferences);
-  } catch (error) {
-    console.error('Get notification preferences error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-export default router;
-
+export default router
