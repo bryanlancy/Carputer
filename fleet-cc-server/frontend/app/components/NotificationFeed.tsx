@@ -4,17 +4,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
 import { formatDistanceToNow } from 'date-fns'
+import { parseMarkdown } from '../utils/markdown'
 import styles from './NotificationFeed.module.scss'
 
 interface Notification {
   id: number
-  title: string
-  message: string | null
-  notification_type: {
-    type_code: string
-    type_name: string
-    severity: string
-  }
+  name?: string
+  title?: string
+  message?: string | null
+  message_template?: string | null
+  notification_type?: 'default' | 'warning' | 'alert' | 'success' | string
   device: {
     id: number
     device_id: string
@@ -143,18 +142,26 @@ export default function NotificationFeed({ isOpen, onClose }: NotificationFeedPr
           <div className={styles.empty}>No notifications</div>
         ) : (
           <div className={styles.notificationList}>
-            {notifications.map((notification) => (
+            {notifications.map((notification) => {
+              const notificationType = (notification.notification_type || 'default') as 'default' | 'warning' | 'alert' | 'success'
+              const displayTitle = notification.title || notification.name || 'Notification'
+              const displayMessage = notification.message || notification.message_template || null
+
+              return (
               <div
                 key={notification.id}
-                className={`${styles.notificationItem} ${!notification.viewed ? styles.unviewed : ''}`}
+                className={`${styles.notificationItem} ${styles[`notificationType_${notificationType}`]} ${!notification.viewed ? styles.unviewed : ''}`}
                 onClick={() => !notification.viewed && markAsViewed(notification.id)}
               >
                 <div className={styles.notificationHeader}>
-                  <span className={styles.notificationTitle}>{notification.title}</span>
+                  <span className={styles.notificationTitle}>{displayTitle}</span>
                   {!notification.viewed && <span className={styles.unviewedBadge}>New</span>}
                 </div>
-                {notification.message && (
-                  <div className={styles.notificationMessage}>{notification.message}</div>
+                {displayMessage && (
+                  <div
+                    className={styles.notificationMessage}
+                    dangerouslySetInnerHTML={{ __html: parseMarkdown(displayMessage) }}
+                  />
                 )}
                 <div className={styles.notificationMeta}>
                   <span className={styles.notificationTime}>
@@ -165,7 +172,7 @@ export default function NotificationFeed({ isOpen, onClose }: NotificationFeedPr
                   )}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
@@ -184,7 +191,11 @@ export function useNotificationCount() {
       return
     }
 
+    let cancelled = false
+
     const loadCount = async () => {
+      if (cancelled) return
+
       try {
         const apiUrl = getApiUrl()
         const response = await fetch(`${apiUrl}/api/notifications/user/me/unread-count`, {
@@ -193,20 +204,28 @@ export function useNotificationCount() {
           },
         })
 
+        if (cancelled) return
+
         if (response.ok) {
           const data = await response.json()
           setCount(data.count || 0)
         }
       } catch (error) {
-        console.error('Error loading notification count:', error)
+        if (!cancelled) {
+          console.error('Error loading notification count:', error)
+        }
       }
     }
 
     loadCount()
     // Refresh count every 30 seconds
     const interval = setInterval(loadCount, 30000)
-    return () => clearInterval(interval)
-  }, [session])
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [session?.access_token]) // Only depend on the access token, not the whole session object
 
   return count
 }

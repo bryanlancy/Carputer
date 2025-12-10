@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { parseMarkdown } from '../utils/markdown'
+import { formatDate } from '../utils/dateFormat'
 import styles from './TemplateEditor.module.scss'
 
 interface TemplateEditorProps {
@@ -8,6 +10,7 @@ interface TemplateEditorProps {
   onChange: (value: string) => void
   availableVariables?: string[]
   triggerType?: 'date_time' | 'backend_event' | 'user_driven'
+  notificationType?: 'default' | 'warning' | 'alert' | 'success'
 }
 
 export default function TemplateEditor({
@@ -15,6 +18,7 @@ export default function TemplateEditor({
   onChange,
   availableVariables = [],
   triggerType,
+  notificationType = 'default',
 }: TemplateEditorProps) {
   const [showHints, setShowHints] = useState(false)
 
@@ -58,7 +62,7 @@ export default function TemplateEditor({
         <label>
           Message Template
           <span className={styles.helpText}>
-            Use {'{{variable}}'} syntax to insert dynamic values
+            Use {'{{variable}}'} syntax to insert dynamic values. Supports markdown: **bold**, *italic*, `code`. Timestamps: {'{{timestamp|"Hello" dd yy HH:mm:ss}}'}
           </span>
         </label>
         <button
@@ -86,7 +90,13 @@ export default function TemplateEditor({
             ))}
           </div>
           <div className={styles.example}>
-            <strong>Example:</strong> Device {'{{device.hostname}}'} is now {'{{device.status}}'}
+            <strong>Examples:</strong>
+            <br />
+            • Device {'{{device.hostname}}'} is now {'{{device.status}}'}
+            <br />
+            • Timestamp: {'{{timestamp|"Hello" dd yy HH:mm:ss}}'}
+            <br />
+            • Markdown: **bold**, *italic*, `code`
           </div>
         </div>
       )}
@@ -102,25 +112,65 @@ export default function TemplateEditor({
       {value && (
         <div className={styles.preview}>
           <div className={styles.previewLabel}>Preview (with sample data):</div>
-          <div className={styles.previewText}>
-            {value.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
-              // Simple preview replacement
-              const sampleValues: Record<string, string> = {
-                'device.id': '1',
-                'device.device_id': 'DEV-001',
-                'device.hostname': 'carputer-01',
-                'device.status': 'online',
-                'timestamp': new Date().toLocaleString(),
-                'date': new Date().toLocaleDateString(),
-                'time': new Date().toLocaleTimeString(),
-                'event.type': 'device.online',
-                'user.id': 'user-123',
-                'user.email': 'user@example.com',
-                'user.name': 'John Doe',
-              }
-              return sampleValues[varName.trim()] || `[${varName.trim()}]`
-            })}
-          </div>
+          <div
+            className={`${styles.previewText} ${styles[`previewType_${notificationType}`]}`}
+            dangerouslySetInnerHTML={{
+              __html: parseMarkdown(
+                value.replace(/\{\{([^}]+)\}\}/g, (match, expression) => {
+                  try {
+                    // Handle format pipes (e.g., {{timestamp|"Hello" dd yy HH:mm:ss}})
+                    if (expression.includes('|')) {
+                      const [variablePath, ...pipeParts] = expression.split('|').map((s: string) => s.trim())
+
+                      // Get sample value
+                      const sampleValues: Record<string, any> = {
+                        'device.id': '1',
+                        'device.device_id': 'DEV-001',
+                        'device.hostname': 'carputer-01',
+                        'device.status': 'online',
+                        'timestamp': new Date(),
+                        'date': new Date(),
+                        'time': new Date(),
+                        'event.type': 'device.online',
+                        'user.id': 'user-123',
+                        'user.email': 'user@example.com',
+                        'user.name': 'John Doe',
+                      }
+
+                      let value = sampleValues[variablePath] || new Date() // Default to current date for timestamp
+
+                      // Process format pipes - everything after the first | is the format string
+                      if (pipeParts.length > 0) {
+                        // Join all pipe parts (in case there are multiple |, though typically just one)
+                        const formatString = pipeParts.join('|').trim()
+                        value = formatDate(value, formatString)
+                      }
+
+                      return String(value)
+                    }
+
+                    // Simple variable access
+                    const sampleValues: Record<string, string> = {
+                      'device.id': '1',
+                      'device.device_id': 'DEV-001',
+                      'device.hostname': 'carputer-01',
+                      'device.status': 'online',
+                      'timestamp': new Date().toLocaleString(),
+                      'date': new Date().toLocaleDateString(),
+                      'time': new Date().toLocaleTimeString(),
+                      'event.type': 'device.online',
+                      'user.id': 'user-123',
+                      'user.email': 'user@example.com',
+                      'user.name': 'John Doe',
+                    }
+                    return sampleValues[expression.trim()] || `[${expression.trim()}]`
+                  } catch (error) {
+                    return `[${expression.trim()}]`
+                  }
+                })
+              )
+            }}
+          />
         </div>
       )}
     </div>

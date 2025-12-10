@@ -120,5 +120,55 @@
   font-size: 14px;
   color: #1f2937;
   line-height: 1.5;
+  word-wrap: break-word; /* Break long words if needed */
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+
+  // Markdown styles
+  strong {
+    font-weight: 600;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+  }
+}
+
+// Notification type styles for preview
+.previewType_default {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+.previewType_warning {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+  border-left-width: 4px;
+}
+
+.previewType_alert {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+  border-left-width: 4px;
+}
+
+.previewType_success {
+  background: #d1fae5;
+  border-color: #10b981;
+  color: #065f46;
+  border-left-width: 4px;
 }
 

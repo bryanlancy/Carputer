@@ -71,6 +71,7 @@
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: background-color 0.2s;
+  border-left: 3px solid transparent;
 
   &:hover {
     background: var(--bg-tertiary);
@@ -78,11 +79,62 @@
 
   &.unviewed {
     background: rgba(59, 130, 246, 0.05);
-    border-left: 3px solid var(--primary-color);
   }
 
   &:last-child {
     border-bottom: none;
+  }
+
+  // Notification type styles
+  &.notificationType_default {
+    border-left-color: #6b7280;
+
+    &.unviewed {
+      background: rgba(107, 114, 128, 0.1);
+      border-left-color: #6b7280;
+    }
+  }
+
+  &.notificationType_warning {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
+
+    &.unviewed {
+      background: rgba(245, 158, 11, 0.1);
+      border-left-color: #f59e0b;
+    }
+
+    .notificationTitle {
+      color: #f59e0b;
+    }
+  }
+
+  &.notificationType_alert {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.05);
+
+    &.unviewed {
+      background: rgba(239, 68, 68, 0.1);
+      border-left-color: #ef4444;
+    }
+
+    .notificationTitle {
+      color: #ef4444;
+    }
+  }
+
+  &.notificationType_success {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.05);
+
+    &.unviewed {
+      background: rgba(16, 185, 129, 0.1);
+      border-left-color: #10b981;
+    }
+
+    .notificationTitle {
+      color: #10b981;
+    }
   }
 }
 
@@ -113,6 +165,26 @@
   font-size: 0.875rem;
   margin-bottom: 0.5rem;
   line-height: 1.5;
+  word-wrap: break-word; /* Break long words if needed */
+
+  // Markdown styles
+  strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    color: var(--text-primary);
+  }
 }
 
 .notificationMeta {

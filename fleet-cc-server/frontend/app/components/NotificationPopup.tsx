@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { parseMarkdown } from '../utils/markdown'
 import styles from './NotificationPopup.module.scss'
 
 interface NotificationPopupProps {
@@ -48,7 +49,10 @@ export function NotificationPopup({ notification, onClose }: NotificationPopupPr
       </div>
       <div className={styles.content}>
         <div className={styles.title}>{notification.title}</div>
-        <div className={styles.message}>{notification.message}</div>
+        <div
+          className={styles.message}
+          dangerouslySetInnerHTML={{ __html: parseMarkdown(notification.message) }}
+        />
       </div>
       <button className={styles.close} onClick={onClose} aria-label="Close">
         ×

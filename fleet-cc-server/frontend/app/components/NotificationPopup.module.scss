@@ -39,6 +39,27 @@
     background-color: #3b82f6;
     color: white;
   }
+
+  // New notification type styles (matching the notification_type field)
+  &.notificationType_default {
+    background-color: #6b7280;
+    color: white;
+  }
+
+  &.notificationType_warning {
+    background-color: #f59e0b;
+    color: white;
+  }
+
+  &.notificationType_alert {
+    background-color: #ef4444;
+    color: white;
+  }
+
+  &.notificationType_success {
+    background-color: #10b981;
+    color: white;
+  }
 }
 
 .icon {
@@ -63,6 +84,24 @@
   font-size: 13px;
   opacity: 0.95;
   line-height: 1.4;
+  word-wrap: break-word; /* Break long words if needed */
+
+  // Markdown styles
+  strong {
+    font-weight: 600;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  code {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+  }
 }
 
 .close {
