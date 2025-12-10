@@ -3,344 +3,566 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
+import { extractDataTypes } from '../utils/dataTypeExtractor'
+import { DataTypeIcons } from '../utils/dataTypeIcons'
+import { generateSchemaFromTemplate } from '../utils/templateSchemaGenerator'
+import TemplateEditor from './TemplateEditor'
 import styles from './NotificationTypeManager.module.scss'
 
-interface NotificationType {
-  id: number
-  type_code: string
-  type_name: string
-  description: string | null
-  severity: 'info' | 'warning' | 'error' | 'critical'
-  enabled: boolean
+interface Notification {
+	id: number
+	name: string
+	description: string | null
+	enabled: boolean
+	notification_type?: string
+	variable_schema?: any
+	// Fields from notification_rules
+	target_users?: any
+	message_template?: string | null
+	priority?: number
 }
 
 export default function NotificationTypeManager() {
-  const { session } = useAuth()
-  const [types, setTypes] = useState<NotificationType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [editingType, setEditingType] = useState<NotificationType | null>(null)
-  const [formData, setFormData] = useState({
-    type_code: '',
-    type_name: '',
-    description: '',
-    severity: 'info' as 'info' | 'warning' | 'error' | 'critical',
-    enabled: true,
-  })
+	const { session } = useAuth()
+	const [types, setTypes] = useState<Notification[]>([])
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<string | null>(null)
+	const [showForm, setShowForm] = useState(false)
+	const [editingType, setEditingType] = useState<Notification | null>(
+		null
+	)
+	const [formData, setFormData] = useState({
+		name: '',
+		description: '',
+		enabled: true,
+		notification_type: 'default' as 'warning' | 'alert' | 'default' | 'success',
+		// Fields from notification_rules
+		target_users: null as any,
+		message_template: '',
+		priority: 0,
+		variable_schema: null as any,
+	})
 
-  useEffect(() => {
-    loadTypes()
-  }, [])
+	useEffect(() => {
+		loadTypes()
+	}, [])
 
-  const loadTypes = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const apiUrl = getApiUrl()
-      const token = session?.access_token
+	const loadTypes = async () => {
+		setLoading(true)
+		setError(null)
+		try {
+			const apiUrl = getApiUrl()
+			const token = session?.access_token
 
-      if (!token) {
-        setError('Authentication required')
-        return
-      }
+			if (!token) {
+				setError('Authentication required')
+				return
+			}
 
-      const response = await fetch(`${apiUrl}/api/admin/notifications/types`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
+			const response = await fetch(
+				`${apiUrl}/api/admin/notifications`,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				}
+			)
 
-      if (response.ok) {
-        const data = await response.json()
-        setTypes(data)
-      } else if (response.status === 401 || response.status === 403) {
-        setError('Unauthorized. Please check your permissions.')
-      } else {
-        setError(`Failed to load notification types: ${response.statusText}`)
-      }
-    } catch (err: any) {
-      setError(`Error loading notification types: ${err.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
+			if (response.ok) {
+				const data = await response.json()
+				setTypes(data)
+			} else if (response.status === 401 || response.status === 403) {
+				setError('Unauthorized. Please check your permissions.')
+			} else {
+				setError(
+					`Failed to load notification types: ${response.statusText}`
+				)
+			}
+		} catch (err: any) {
+			setError(`Error loading notification types: ${err.message}`)
+		} finally {
+			setLoading(false)
+		}
+	}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault()
+		setError(null)
 
-    try {
-      const apiUrl = getApiUrl()
-      const token = session?.access_token
+		try {
+			const apiUrl = getApiUrl()
+			const token = session?.access_token
 
-      if (!token) {
-        setError('Authentication required')
-        return
-      }
+			if (!token) {
+				setError('Authentication required')
+				return
+			}
 
-      const url = editingType
-        ? `${apiUrl}/api/admin/notifications/types/${editingType.type_code}`
-        : `${apiUrl}/api/admin/notifications/types`
+			const url = editingType
+				? `${apiUrl}/api/admin/notifications/${editingType.id}`
+				: `${apiUrl}/api/admin/notifications`
 
-      const response = await fetch(url, {
-        method: editingType ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          type_code: formData.type_code,
-          type_name: formData.type_name,
-          ...(formData.description && formData.description.trim() ? { description: formData.description.trim() } : {}),
-          severity: formData.severity,
-          enabled: formData.enabled,
-        }),
-      })
+			const response = await fetch(url, {
+				method: editingType ? 'PUT' : 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({
+					name: formData.name,
+					...(formData.description && formData.description.trim()
+						? { description: formData.description.trim() }
+						: {}),
+					enabled: formData.enabled,
+					notification_type: formData.notification_type || 'default',
+					target_users: formData.target_users || null,
+					message_template: formData.message_template || null,
+					priority: formData.priority || 0,
+					variable_schema: formData.variable_schema || null,
+				}),
+			})
 
-      if (response.ok) {
-        await loadTypes()
-        setShowForm(false)
-        setEditingType(null)
-        setFormData({
-          type_code: '',
-          type_name: '',
-          description: '',
-          severity: 'info',
-          enabled: true,
-        })
-      } else {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        setError(errorData.error || `Failed to ${editingType ? 'update' : 'create'} notification type`)
-      }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`)
-    }
-  }
+			if (response.ok) {
+				await loadTypes()
+				setShowForm(false)
+				setEditingType(null)
+				setFormData({
+					name: '',
+					description: '',
+					enabled: true,
+					notification_type: 'default',
+					target_users: null,
+					message_template: '',
+					priority: 0,
+					variable_schema: null,
+				})
+			} else {
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: 'Unknown error' }))
+				setError(
+					errorData.error ||
+						`Failed to ${
+							editingType ? 'update' : 'create'
+						} notification type`
+				)
+			}
+		} catch (err: any) {
+			setError(`Error: ${err.message}`)
+		}
+	}
 
-  const handleEdit = (type: NotificationType) => {
-    setEditingType(type)
-    setFormData({
-      type_code: type.type_code,
-      type_name: type.type_name,
-      description: type.description || '',
-      severity: type.severity,
-      enabled: type.enabled,
-    })
-    setShowForm(true)
-  }
+	const handleEdit = (type: Notification) => {
+		setEditingType(type)
+		setFormData({
+			name: type.name,
+			description: type.description || '',
+			enabled: type.enabled,
+			notification_type: (type.notification_type as any) || 'default',
+			target_users: type.target_users || null,
+			message_template: type.message_template || '',
+			priority: type.priority || 0,
+			variable_schema: type.variable_schema || null,
+		})
+		setShowForm(true)
+	}
 
-  const handleDelete = async (typeCode: string) => {
-    if (!confirm(`Are you sure you want to delete notification type "${typeCode}"?`)) {
-      return
-    }
+	// Auto-generate variable schema when message template changes
+	const handleMessageTemplateChange = (value: string) => {
+		const newSchema = generateSchemaFromTemplate(value)
+		setFormData({
+			...formData,
+			message_template: value,
+			variable_schema: newSchema,
+		})
+	}
 
-    try {
-      const apiUrl = getApiUrl()
-      const token = session?.access_token
+	const handleDelete = async (id: number) => {
+		if (
+			!confirm(
+				`Are you sure you want to delete this notification type?`
+			)
+		) {
+			return
+		}
 
-      if (!token) {
-        setError('Authentication required')
-        return
-      }
+		try {
+			const apiUrl = getApiUrl()
+			const token = session?.access_token
 
-      const response = await fetch(`${apiUrl}/api/admin/notifications/types/${typeCode}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
+			if (!token) {
+				setError('Authentication required')
+				return
+			}
 
-      if (response.ok) {
-        await loadTypes()
-      } else {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        setError(errorData.error || 'Failed to delete notification type')
-      }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`)
-    }
-  }
+			const response = await fetch(
+				`${apiUrl}/api/admin/notifications/${id}`,
+				{
+					method: 'DELETE',
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				}
+			)
 
-  const handleCancel = () => {
-    setShowForm(false)
-    setEditingType(null)
-    setFormData({
-      type_code: '',
-      type_name: '',
-      description: '',
-      severity: 'info',
-      enabled: true,
-    })
-  }
+			if (response.ok) {
+				await loadTypes()
+			} else {
+				const errorData = await response
+					.json()
+					.catch(() => ({ error: 'Unknown error' }))
+				setError(
+					errorData.error || 'Failed to delete notification type'
+				)
+			}
+		} catch (err: any) {
+			setError(`Error: ${err.message}`)
+		}
+	}
 
-  if (loading) {
-    return <div className={styles.loading}>Loading notification types...</div>
-  }
+	const handleCancel = () => {
+		setShowForm(false)
+		setEditingType(null)
+		setFormData({
+			name: '',
+			description: '',
+			enabled: true,
+			notification_type: 'default',
+			target_users: null,
+			message_template: '',
+			priority: 0,
+			variable_schema: null,
+		})
+	}
 
-  return (
-    <div className={styles.container}>
-      <div className={styles.actions}>
-        <button
-          onClick={() => {
-            setEditingType(null)
-            setFormData({
-              type_code: '',
-              type_name: '',
-              description: '',
-              severity: 'info',
-              enabled: true,
-            })
-            setShowForm(true)
-          }}
-          className={styles.addButton}
-        >
-          + Add New Type
-        </button>
-      </div>
+	if (loading) {
+		return (
+			<div className={styles.loading}>Loading notification types...</div>
+		)
+	}
 
-      {showForm && (
-        <div className={styles.formOverlay}>
-          <div className={styles.formContainer}>
-            <h3>{editingType ? 'Edit' : 'Create'} Notification Type</h3>
-            {error && (
-              <div className={styles.formError}>
-                {error}
-                <button onClick={() => setError(null)} className={styles.dismissError}>×</button>
-              </div>
-            )}
-            <form onSubmit={handleSubmit}>
-              <div className={styles.formGroup}>
-                <label>
-                  Type Code <span className={styles.required}>*</span>
-                  <input
-                    type="text"
-                    value={formData.type_code}
-                    onChange={(e) => setFormData({ ...formData, type_code: e.target.value })}
-                    required
-                    disabled={!!editingType}
-                    placeholder="e.g., device.online"
-                  />
-                  <small>Unique identifier (cannot be changed after creation)</small>
-                </label>
-              </div>
+	return (
+		<div className={styles.container}>
+			<div className={styles.actions}>
+				<button
+					onClick={() => {
+						setEditingType(null)
+				setFormData({
+					name: '',
+					description: '',
+					enabled: true,
+					notification_type: 'default',
+					target_users: null,
+					message_template: '',
+					priority: 0,
+					variable_schema: null,
+				})
+						setShowForm(true)
+					}}
+					className={styles.addButton}>
+					+ Add New Type
+				</button>
+			</div>
 
-              <div className={styles.formGroup}>
-                <label>
-                  Type Name <span className={styles.required}>*</span>
-                  <input
-                    type="text"
-                    value={formData.type_name}
-                    onChange={(e) => setFormData({ ...formData, type_name: e.target.value })}
-                    required
-                    placeholder="e.g., Device Online"
-                  />
-                </label>
-              </div>
+			{showForm && (
+				<div className={styles.formOverlay}>
+					<div className={styles.formContainer}>
+						<h3>
+							{editingType
+								? 'Edit Notification'
+								: 'Create Notification'}
+						</h3>
+						{error && (
+							<div className={styles.formError}>
+								{error}
+								<button
+									onClick={() => setError(null)}
+									className={styles.dismissError}>
+									×
+								</button>
+							</div>
+						)}
+						<form onSubmit={handleSubmit}>
+							<div className={styles.formGroup}>
+								<label>
+									Name{' '}
+									<span className={styles.required}>*</span>
+									<input
+										type='text'
+										value={formData.name}
+										onChange={e =>
+											setFormData({
+												...formData,
+												name: e.target.value,
+											})
+										}
+										required
+										placeholder='e.g., Device Online'
+									/>
+								</label>
+							</div>
 
-              <div className={styles.formGroup}>
-                <label>
-                  Description
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    placeholder="Optional description of this notification type"
-                  />
-                </label>
-              </div>
+							<div className={styles.formGroup}>
+								<label>
+									Description
+									<textarea
+										value={formData.description}
+										onChange={e =>
+											setFormData({
+												...formData,
+												description: e.target.value,
+											})
+										}
+										rows={3}
+										placeholder='Optional description of this notification type'
+									/>
+								</label>
+							</div>
 
-              <div className={styles.formGroup}>
-                <label>
-                  Severity
-                  <select
-                    value={formData.severity}
-                    onChange={(e) => setFormData({ ...formData, severity: e.target.value as any })}
-                  >
-                    <option value="info">Info</option>
-                    <option value="warning">Warning</option>
-                    <option value="error">Error</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </label>
-              </div>
+							<div className={styles.formGroup}>
+								<label>
+									Notification Type{' '}
+									<span className={styles.required}>*</span>
+									<select
+										value={formData.notification_type}
+										onChange={e =>
+											setFormData({
+												...formData,
+												notification_type: e.target
+													.value as
+													| 'default'
+													| 'warning'
+													| 'alert'
+													| 'success',
+											})
+										}
+										required>
+										<option value='default'>Default</option>
+										<option value='warning'>Warning</option>
+										<option value='alert'>Alert</option>
+										<option value='success'>Success</option>
+									</select>
+								</label>
+							</div>
 
-              <div className={styles.formGroup}>
-                <label className={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={formData.enabled}
-                    onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  />
-                  Enabled
-                </label>
-              </div>
+							<div className={styles.formGroup}>
+								<label>
+									Target Users (JSON)
+									<textarea
+										value={
+											formData.target_users
+												? JSON.stringify(
+														formData.target_users,
+														null,
+														2
+												  )
+												: ''
+										}
+										onChange={e => {
+											try {
+												const parsed = e.target.value
+													? JSON.parse(e.target.value)
+													: null
+												setFormData({
+													...formData,
+													target_users: parsed,
+												})
+											} catch (err) {
+												// Invalid JSON, keep the text for user to fix
+											}
+										}}
+										rows={4}
+										placeholder='["user-id-1", "user-id-2"] or ["admin", "operator"] or null for all users'
+										className={styles.jsonInput}
+									/>
+									<small>
+										Array of user IDs or role names. Leave
+										empty/null for all users.
+									</small>
+								</label>
+							</div>
 
-              <div className={styles.formActions}>
-                <button type="submit" className={styles.saveButton}>
-                  {editingType ? 'Update' : 'Create'} Type
-                </button>
-                <button type="button" onClick={handleCancel} className={styles.cancelButton}>
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+							<div className={styles.formGroup}>
+								<TemplateEditor
+									value={formData.message_template}
+									onChange={handleMessageTemplateChange}
+									triggerType='backend_event'
+									notificationType={formData.notification_type}
+								/>
+							</div>
 
-      {types.length === 0 ? (
-        <div className={styles.empty}>
-          <p>No notification types found. Create your first notification type to get started.</p>
-        </div>
-      ) : (
-        <div className={styles.tableContainer}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Severity</th>
-                <th>Enabled</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {types.map((type) => (
-                <tr key={type.id}>
-                  <td className={styles.codeCell}>{type.type_code}</td>
-                  <td>{type.type_name}</td>
-                  <td>
-                    <span className={`${styles.severity} ${styles[type.severity]}`}>
-                      {type.severity}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={type.enabled ? styles.enabled : styles.disabled}>
-                      {type.enabled ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => handleEdit(type)}
-                      className={styles.editButton}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(type.type_code)}
-                      className={styles.deleteButton}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
+							<div className={styles.formGroup}>
+								<label>
+									Priority
+									<input
+										type='number'
+										value={formData.priority}
+										onChange={e =>
+											setFormData({
+												...formData,
+												priority:
+													parseInt(e.target.value) ||
+													0,
+											})
+										}
+										min='0'
+										placeholder='0'
+									/>
+									<small>
+										Priority level (higher numbers = higher
+										priority)
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Variable Schema (JSON) - Auto-generated from template
+									<textarea
+										value={
+											formData.variable_schema
+												? JSON.stringify(
+														formData.variable_schema,
+														null,
+														2
+												  )
+												: 'null'
+										}
+										onChange={e => {
+											try {
+												const parsed = e.target.value && e.target.value !== 'null'
+													? JSON.parse(e.target.value)
+													: null
+												setFormData({
+													...formData,
+													variable_schema: parsed,
+												})
+											} catch (err) {
+												// Invalid JSON, keep the text for user to fix
+											}
+										}}
+										rows={8}
+										className={`${styles.jsonInput} ${styles.readOnly}`}
+										readOnly
+									/>
+									<small>
+										Auto-generated from message template. Variables used in the template will be reflected here.
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label className={styles.checkboxLabel}>
+									<input
+										type='checkbox'
+										checked={formData.enabled}
+										onChange={e =>
+											setFormData({
+												...formData,
+												enabled: e.target.checked,
+											})
+										}
+									/>
+									Enabled
+								</label>
+							</div>
+
+							<div className={styles.formActions}>
+								<button
+									type='submit'
+									className={styles.saveButton}>
+									{editingType ? 'Update' : 'Create'} Type
+								</button>
+								<button
+									type='button'
+									onClick={handleCancel}
+									className={styles.cancelButton}>
+									Cancel
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+
+			{types.length === 0 ? (
+				<div className={styles.empty}>
+					<p>
+						No notification types found. Create your first
+						notification type to get started.
+					</p>
+				</div>
+			) : (
+				<div className={styles.tableContainer}>
+					<table className={styles.table}>
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>Name</th>
+								<th>Priority</th>
+								<th>Required Data Types</th>
+								<th>Enabled</th>
+								<th>Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{types.map(type => {
+								const dataTypes = type.variable_schema
+									? extractDataTypes(type.variable_schema)
+									: []
+								return (
+									<tr key={type.id}>
+										<td className={styles.codeCell}>
+											{type.id}
+										</td>
+										<td>{type.name}</td>
+										<td>{type.priority || 0}</td>
+										<td>
+											{dataTypes.length > 0 ? (
+												<DataTypeIcons
+													types={dataTypes}
+													size='small'
+												/>
+											) : (
+												<span
+													className={
+														styles.noDataTypes
+													}>
+													None
+												</span>
+											)}
+										</td>
+										<td>
+											<span
+												className={
+													type.enabled
+														? styles.enabled
+														: styles.disabled
+												}>
+												{type.enabled ? 'Yes' : 'No'}
+											</span>
+										</td>
+										<td>
+											<button
+												onClick={() => handleEdit(type)}
+												className={styles.editButton}>
+												Edit
+											</button>
+											<button
+												onClick={() =>
+													handleDelete(type.id)
+												}
+												className={styles.deleteButton}>
+												Delete
+											</button>
+										</td>
+									</tr>
+								)
+							})}
+						</tbody>
+					</table>
+				</div>
+			)}
+		</div>
+	)
 }
-

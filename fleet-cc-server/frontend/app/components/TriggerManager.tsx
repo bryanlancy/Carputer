@@ -202,7 +202,16 @@ export default function TriggerManager() {
 				</p>
 			</div>
 
-			{error && <div className={styles.error}>{error}</div>}
+			{error && (
+				<div className={styles.error}>
+					{error}
+					<button
+						onClick={() => setError(null)}
+						className={styles.dismissError}>
+						×
+					</button>
+				</div>
+			)}
 
 			<div className={styles.actions}>
 				<button
@@ -216,11 +225,22 @@ export default function TriggerManager() {
 			</div>
 
 			{showForm && (
-				<div className={styles.formContainer}>
-					<form onSubmit={handleSubmit} className={styles.form}>
+				<div className={styles.formOverlay}>
+					<div className={styles.formContainer}>
 						<h3>
 							{editingTrigger ? 'Edit Trigger' : 'Create Trigger'}
 						</h3>
+						{error && (
+							<div className={styles.formError}>
+								{error}
+								<button
+									onClick={() => setError(null)}
+									className={styles.dismissError}>
+									×
+								</button>
+							</div>
+						)}
+						<form onSubmit={handleSubmit} className={styles.form}>
 
 						<div className={styles.formGroup}>
 							<label>
@@ -342,11 +362,12 @@ export default function TriggerManager() {
 							</button>
 						</div>
 					</form>
+					</div>
 				</div>
 			)}
 
-			<div className={styles.list}>
-				<table>
+			<div className={styles.tableContainer}>
+				<table className={styles.table}>
 					<thead>
 						<tr>
 							<th>Code</th>
@@ -359,9 +380,11 @@ export default function TriggerManager() {
 					<tbody>
 						{triggers.length === 0 ? (
 							<tr>
-								<td colSpan={5} className={styles.empty}>
-									No triggers found. Create one to get
-									started.
+								<td colSpan={5}>
+									<div className={styles.empty}>
+										No triggers found. Create one to get
+										started.
+									</div>
 								</td>
 							</tr>
 						) : (

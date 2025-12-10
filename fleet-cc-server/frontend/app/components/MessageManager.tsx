@@ -230,7 +230,16 @@ export default function MessageManager() {
 
 	return (
 		<div className={styles.container}>
-			{error && <div className={styles.error}>{error}</div>}
+			{error && (
+				<div className={styles.error}>
+					{error}
+					<button
+						onClick={() => setError(null)}
+						className={styles.dismissError}>
+						×
+					</button>
+				</div>
+			)}
 
 			<div className={styles.actions}>
 				<button
@@ -244,200 +253,216 @@ export default function MessageManager() {
 			</div>
 
 			{showForm && (
-				<div className={styles.formContainer}>
-					<form onSubmit={handleSubmit} className={styles.form}>
+				<div className={styles.formOverlay}>
+					<div className={styles.formContainer}>
 						<h3>
 							{editingMessage ? 'Edit Message' : 'Create Message'}
 						</h3>
-
-						<div className={styles.formGroup}>
-							<label>
-								Message Code *
-								<input
-									type='text'
-									value={formData.message_code}
-									onChange={e =>
-										setFormData({
-											...formData,
-											message_code: e.target.value,
-										})
-									}
-									required
-									disabled={!!editingMessage}
-									placeholder='e.g., device_online_email'
-								/>
-								<small>
-									Unique identifier for this message (cannot
-									be changed after creation)
-								</small>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Message Name *
-								<input
-									type='text'
-									value={formData.message_name}
-									onChange={e =>
-										setFormData({
-											...formData,
-											message_name: e.target.value,
-										})
-									}
-									required
-									placeholder='e.g., Device Online Email'
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Description
-								<textarea
-									value={formData.description}
-									onChange={e =>
-										setFormData({
-											...formData,
-											description: e.target.value,
-										})
-									}
-									placeholder='Optional description of this message'
-									rows={3}
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Message Type *
-								<select
-									value={formData.message_type}
-									onChange={e =>
-										setFormData({
-											...formData,
-											message_type: e.target.value,
-										})
-									}
-									required>
-									<option value='email'>Email</option>
-									<option value='sms'>SMS</option>
-									<option value='webhook'>Webhook</option>
-									<option value='custom'>Custom</option>
-								</select>
-							</label>
-						</div>
-
-						{formData.message_type === 'email' && (
+						{error && (
+							<div className={styles.formError}>
+								{error}
+								<button
+									onClick={() => setError(null)}
+									className={styles.dismissError}>
+									×
+								</button>
+							</div>
+						)}
+						<form onSubmit={handleSubmit} className={styles.form}>
 							<div className={styles.formGroup}>
 								<label>
-									Subject Template
+									Message Code *
+									<input
+										type='text'
+										value={formData.message_code}
+										onChange={e =>
+											setFormData({
+												...formData,
+												message_code: e.target.value,
+											})
+										}
+										required
+										disabled={!!editingMessage}
+										placeholder='e.g., device_online_email'
+									/>
+									<small>
+										Unique identifier for this message
+										(cannot be changed after creation)
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Message Name *
+									<input
+										type='text'
+										value={formData.message_name}
+										onChange={e =>
+											setFormData({
+												...formData,
+												message_name: e.target.value,
+											})
+										}
+										required
+										placeholder='e.g., Device Online Email'
+									/>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Description
+									<textarea
+										value={formData.description}
+										onChange={e =>
+											setFormData({
+												...formData,
+												description: e.target.value,
+											})
+										}
+										placeholder='Optional description of this message'
+										rows={3}
+									/>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Message Type *
+									<select
+										value={formData.message_type}
+										onChange={e =>
+											setFormData({
+												...formData,
+												message_type: e.target.value,
+											})
+										}
+										required>
+										<option value='email'>Email</option>
+										<option value='sms'>SMS</option>
+										<option value='webhook'>Webhook</option>
+										<option value='custom'>Custom</option>
+									</select>
+								</label>
+							</div>
+
+							{formData.message_type === 'email' && (
+								<div className={styles.formGroup}>
+									<label>
+										Subject Template
+										<TemplateEditor
+											value={
+												formData.subject_template || ''
+											}
+											onChange={value =>
+												setFormData({
+													...formData,
+													subject_template: value,
+												})
+											}
+											triggerType={null}
+										/>
+										<small>
+											Use {'{{variable}}'} syntax for
+											dynamic values
+										</small>
+									</label>
+								</div>
+							)}
+
+							<div className={styles.formGroup}>
+								<label>
+									Body Template *
 									<TemplateEditor
-										value={formData.subject_template || ''}
+										value={formData.body_template}
 										onChange={value =>
 											setFormData({
 												...formData,
-												subject_template: value,
+												body_template: value,
 											})
 										}
 										triggerType={null}
 									/>
 									<small>
 										Use {'{{variable}}'} syntax for dynamic
-										values
+										values. Variables used will affect data
+										requirements.
 									</small>
 								</label>
 							</div>
-						)}
 
-						<div className={styles.formGroup}>
-							<label>
-								Body Template *
-								<TemplateEditor
-									value={formData.body_template}
-									onChange={value =>
-										setFormData({
-											...formData,
-											body_template: value,
-										})
-									}
-									triggerType={null}
-								/>
-								<small>
-									Use {'{{variable}}'} syntax for dynamic
-									values. Variables used will affect data
-									requirements.
-								</small>
-							</label>
-						</div>
+							<div className={styles.formGroup}>
+								<label>
+									Variable Schema (JSON)
+									<textarea
+										value={JSON.stringify(
+											formData.variable_schema,
+											null,
+											2
+										)}
+										onChange={e => {
+											try {
+												const parsed = JSON.parse(
+													e.target.value
+												)
+												setFormData({
+													...formData,
+													variable_schema: parsed,
+												})
+											} catch (err) {
+												// Invalid JSON, keep the text for user to fix
+											}
+										}}
+										placeholder='{"type": "object", "properties": {...}, "required": [...]}'
+										rows={8}
+										className={styles.jsonInput}
+									/>
+									<small>
+										JSON Schema defining what data this
+										message requires (optional - will be
+										inferred from template)
+									</small>
+								</label>
+							</div>
 
-						<div className={styles.formGroup}>
-							<label>
-								Variable Schema (JSON)
-								<textarea
-									value={JSON.stringify(
-										formData.variable_schema,
-										null,
-										2
-									)}
-									onChange={e => {
-										try {
-											const parsed = JSON.parse(
-												e.target.value
-											)
+							<div className={styles.formGroup}>
+								<label>
+									<input
+										type='checkbox'
+										checked={formData.enabled}
+										onChange={e =>
 											setFormData({
 												...formData,
-												variable_schema: parsed,
+												enabled: e.target.checked,
 											})
-										} catch (err) {
-											// Invalid JSON, keep the text for user to fix
 										}
-									}}
-									placeholder='{"type": "object", "properties": {...}, "required": [...]}'
-									rows={8}
-									className={styles.jsonInput}
-								/>
-								<small>
-									JSON Schema defining what data this message
-									requires (optional - will be inferred from
-									template)
-								</small>
-							</label>
-						</div>
+									/>
+									Enabled
+								</label>
+							</div>
 
-						<div className={styles.formGroup}>
-							<label>
-								<input
-									type='checkbox'
-									checked={formData.enabled}
-									onChange={e =>
-										setFormData({
-											...formData,
-											enabled: e.target.checked,
-										})
-									}
-								/>
-								Enabled
-							</label>
-						</div>
-
-						<div className={styles.formActions}>
-							<button type='submit' className={styles.saveButton}>
-								{editingMessage ? 'Update' : 'Create'} Message
-							</button>
-							<button
-								type='button'
-								onClick={resetForm}
-								className={styles.cancelButton}>
-								Cancel
-							</button>
-						</div>
-					</form>
+							<div className={styles.formActions}>
+								<button
+									type='submit'
+									className={styles.saveButton}>
+									{editingMessage ? 'Update' : 'Create'}{' '}
+									Message
+								</button>
+								<button
+									type='button'
+									onClick={resetForm}
+									className={styles.cancelButton}>
+									Cancel
+								</button>
+							</div>
+						</form>
+					</div>
 				</div>
 			)}
 
-			<div className={styles.list}>
-				<table>
+			<div className={styles.tableContainer}>
+				<table className={styles.table}>
 					<thead>
 						<tr>
 							<th>Code</th>
@@ -451,9 +476,11 @@ export default function MessageManager() {
 					<tbody>
 						{messages.length === 0 ? (
 							<tr>
-								<td colSpan={6} className={styles.empty}>
-									No messages found. Create one to get
-									started.
+								<td colSpan={6}>
+									<div className={styles.empty}>
+										No messages found. Create one to get
+										started.
+									</div>
 								</td>
 							</tr>
 						) : (

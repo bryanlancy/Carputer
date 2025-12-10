@@ -208,7 +208,16 @@ export default function ActionManager() {
 				</p>
 			</div>
 
-			{error && <div className={styles.error}>{error}</div>}
+			{error && (
+				<div className={styles.error}>
+					{error}
+					<button
+						onClick={() => setError(null)}
+						className={styles.dismissError}>
+						×
+					</button>
+				</div>
+			)}
 
 			<div className={styles.actions}>
 				<button
@@ -222,11 +231,22 @@ export default function ActionManager() {
 			</div>
 
 			{showForm && (
-				<div className={styles.formContainer}>
-					<form onSubmit={handleSubmit} className={styles.form}>
+				<div className={styles.formOverlay}>
+					<div className={styles.formContainer}>
 						<h3>
 							{editingAction ? 'Edit Action' : 'Create Action'}
 						</h3>
+						{error && (
+							<div className={styles.formError}>
+								{error}
+								<button
+									onClick={() => setError(null)}
+									className={styles.dismissError}>
+									×
+								</button>
+							</div>
+						)}
+						<form onSubmit={handleSubmit} className={styles.form}>
 
 						<div className={styles.formGroup}>
 							<label>
@@ -375,11 +395,12 @@ export default function ActionManager() {
 							</button>
 						</div>
 					</form>
+					</div>
 				</div>
 			)}
 
-			<div className={styles.list}>
-				<table>
+			<div className={styles.tableContainer}>
+				<table className={styles.table}>
 					<thead>
 						<tr>
 							<th>Code</th>
