@@ -51,12 +51,23 @@ export default function WiringManager() {
 	const [messages, setMessages] = useState<
 		Array<{ id: number; message_code: string; message_name: string }>
 	>([])
+	const [commands, setCommands] = useState<
+		Array<{ value: string; label: string }>
+	>([])
+	const [notificationTypes, setNotificationTypes] = useState<
+		Array<{
+			id: number
+			name: string
+			variable_schema?: any
+		}>
+	>([])
 	const [wiringConfig, setWiringConfig] =
 		useState<WiringConfiguration | null>(null)
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [success, setSuccess] = useState<string | null>(null)
+	const [hasInvalidConnections, setHasInvalidConnections] = useState(false)
 	const [showCreateWorkspace, setShowCreateWorkspace] = useState(false)
 	const [newWorkspaceName, setNewWorkspaceName] = useState('')
 	const nodesRef = useRef<Node[] | null>(null)
@@ -67,6 +78,8 @@ export default function WiringManager() {
 		loadTriggers()
 		loadEvents()
 		loadMessages()
+		loadCommands()
+		loadNotificationTypes()
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
@@ -214,6 +227,54 @@ export default function WiringManager() {
 		}
 	}
 
+	const loadCommands = async () => {
+		try {
+			const apiUrl = getApiUrl()
+			const response = await authenticatedFetch(
+				`${apiUrl}/api/admin/wiring/commands/list`,
+				{
+					headers: {
+						Authorization: `Bearer ${session?.access_token}`,
+					},
+				}
+			)
+
+			if (response.ok) {
+				const data = await response.json()
+				setCommands(data)
+			}
+		} catch (err: any) {
+			console.error('Failed to load commands:', err)
+		}
+	}
+
+	const loadNotificationTypes = async () => {
+		try {
+			const apiUrl = getApiUrl()
+			const response = await authenticatedFetch(
+				`${apiUrl}/api/admin/notifications`,
+				{
+					headers: {
+						Authorization: `Bearer ${session?.access_token}`,
+					},
+				}
+			)
+
+			if (response.ok) {
+				const data = await response.json()
+				setNotificationTypes(
+					data.map((nt: any) => ({
+						id: nt.id,
+						name: nt.name,
+						variable_schema: nt.variable_schema,
+					}))
+				)
+			}
+		} catch (err: any) {
+			console.error('Failed to load notification types:', err)
+		}
+	}
+
 	const loadWiringConfig = async (workspaceId: number) => {
 		try {
 			const apiUrl = getApiUrl()
@@ -264,6 +325,11 @@ export default function WiringManager() {
 	const saveWiringConfig = async () => {
 		if (!selectedWorkspaceId) {
 			setError('Please select a workspace')
+			return
+		}
+
+		if (hasInvalidConnections) {
+			setError('Cannot save: There are invalid connections. Please fix them before saving.')
 			return
 		}
 
@@ -423,6 +489,14 @@ export default function WiringManager() {
 										e.event_code === 'send_email'
 											? messages
 											: undefined,
+									availableCommands:
+										e.event_code === 'execute_command'
+											? commands
+											: undefined,
+									availableNotificationTypes:
+										e.event_code === 'show_notification'
+											? notificationTypes
+											: undefined,
 								}))}
 								initialNodes={wiringConfig?.nodes || []}
 								initialEdges={wiringConfig?.edges || []}
@@ -430,6 +504,7 @@ export default function WiringManager() {
 								onEdgesChange={handleEdgesChange}
 								nodesRef={nodesRef}
 								edgesRef={edgesRef}
+								onValidationChange={setHasInvalidConnections}
 							/>
 						</div>
 						<ActionSidebar
@@ -446,9 +521,14 @@ export default function WiringManager() {
 					</div>
 
 					<div className={styles.actions}>
+						{hasInvalidConnections && (
+							<div className={styles.error}>
+								⚠️ Invalid connections detected. Please fix them before saving.
+							</div>
+						)}
 						<button
 							onClick={saveWiringConfig}
-							disabled={saving}
+							disabled={saving || hasInvalidConnections}
 							className={styles.saveButton}>
 							{saving ? 'Saving...' : 'Save Configuration'}
 						</button>

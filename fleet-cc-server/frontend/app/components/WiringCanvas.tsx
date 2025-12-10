@@ -18,6 +18,7 @@ import TriggerNode, { TriggerNodeData } from './nodes/TriggerNode'
 import EventNode, { EventNodeData } from './nodes/EventNode'
 import { validateConnection } from '../utils/schemaValidation'
 import ContextMenu from './wiring/ContextMenu'
+import EdgeWithTooltip from './wiring/EdgeWithTooltip'
 import styles from './WiringCanvas.module.scss'
 
 export interface WiringCanvasProps {
@@ -42,6 +43,15 @@ export interface WiringCanvasProps {
 			message_code: string
 			message_name: string
 		}>
+		availableCommands?: Array<{
+			value: string
+			label: string
+		}>
+		availableNotificationTypes?: Array<{
+			id: number
+			name: string
+			variable_schema?: any
+		}>
 	}>
 	initialNodes?: Node[]
 	initialEdges?: Edge[]
@@ -51,6 +61,7 @@ export interface WiringCanvasProps {
 	readOnly?: boolean
 	nodesRef?: React.MutableRefObject<Node[] | null>
 	edgesRef?: React.MutableRefObject<Edge[] | null>
+	onValidationChange?: (hasInvalidConnections: boolean) => void
 }
 
 // Define nodeTypes outside component to avoid React Flow warning
@@ -58,6 +69,11 @@ export interface WiringCanvasProps {
 const nodeTypes = {
 	trigger: TriggerNode,
 	event: EventNode,
+}
+
+// Define edgeTypes outside component
+const edgeTypes = {
+	default: EdgeWithTooltip,
 }
 
 export default function WiringCanvas({
@@ -71,9 +87,12 @@ export default function WiringCanvas({
 	readOnly = false,
 	nodesRef,
 	edgesRef,
+	onValidationChange,
 }: WiringCanvasProps) {
 	const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes)
 	const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges)
+	// Use internal ref to track latest nodes for validation (separate from prop nodesRef)
+	const internalNodesRef = useRef(nodes)
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
@@ -141,9 +160,10 @@ export default function WiringCanvas({
 				// Check if this action has variable data types
 				const hasVariableDataTypes =
 					action.event_code === 'show_notification' ||
-					action.event_code === 'send_email'
+					action.event_code === 'send_email' ||
+					action.event_code === 'execute_command'
 
-				// Find the action in events array to get availableMessages
+				// Find the action in events array to get available data
 				const fullAction = events.find(e => e.id === action.id)
 
 				const newNode: Node<EventNodeData> = {
@@ -158,6 +178,17 @@ export default function WiringCanvas({
 						...(action.event_code === 'send_email' &&
 							fullAction?.availableMessages && {
 								availableMessages: fullAction.availableMessages,
+							}),
+						// Include availableCommands if this is Execute Command action
+						...(action.event_code === 'execute_command' &&
+							fullAction?.availableCommands && {
+								availableCommands: fullAction.availableCommands,
+							}),
+						// Include availableNotificationTypes if this is Show Notification action
+						...(action.event_code === 'show_notification' &&
+							fullAction?.availableNotificationTypes && {
+								availableNotificationTypes:
+									fullAction.availableNotificationTypes,
 							}),
 					},
 				}
@@ -180,12 +211,141 @@ export default function WiringCanvas({
 		}
 	}, [initialEdges, setEdges])
 
-	// Update refs when nodes/edges change
+	// Validate all edges and mark invalid ones
+	const validateAllEdges = useCallback(() => {
+		setEdges(eds => {
+			return eds.map(edge => {
+				// Extract trigger and event IDs from node IDs
+				const triggerMatch = edge.source.match(/^trigger-(\d+)/)
+				const eventMatch = edge.target.match(/^event-(\d+)/)
+
+				if (!triggerMatch || !eventMatch) {
+					return { ...edge, style: { stroke: '#ef4444' }, animated: false }
+				}
+
+				const triggerId = parseInt(triggerMatch[1])
+				const eventId = parseInt(eventMatch[1])
+
+				const trigger = triggers.find(t => t.id === triggerId)
+				// Use internalNodesRef to get the latest nodes state (including config changes)
+				const eventNode = internalNodesRef.current.find(n => n.id === edge.target)
+				const event = events.find(e => e.id === eventId)
+
+				if (!trigger || !event || !eventNode) {
+					return { ...edge, style: { stroke: '#ef4444' }, animated: false }
+				}
+
+				// Get effective event schema based on node configuration
+				let effectiveEvent = event
+				const eventData = eventNode.data as any
+
+				// For show_notification, use the selected notification type's variable_schema
+				if (
+					eventData.event_code === 'show_notification' &&
+					eventData.config?.notification_id
+				) {
+					const fullEvent = events.find(e => e.id === eventId)
+					if (fullEvent?.availableNotificationTypes) {
+						const selectedType =
+							fullEvent.availableNotificationTypes.find(
+								(nt: any) =>
+									nt.id.toString() ===
+									eventData.config.notification_id.toString()
+							)
+						if (selectedType?.variable_schema) {
+							effectiveEvent = {
+								...event,
+								input_schema: selectedType.variable_schema,
+							}
+						} else {
+							effectiveEvent = {
+								...event,
+								input_schema: {
+									type: 'object',
+									properties: {},
+									required: [],
+								},
+							}
+						}
+					}
+				} else if (
+					eventData.event_code === 'send_email' &&
+					eventData.config?.message_code
+				) {
+					// For send_email, use the selected message's variable_schema
+					const fullEvent = events.find(e => e.id === eventId)
+					if (fullEvent?.availableMessages) {
+						// Messages typically require device data, but we could enhance this later
+						// For now, we'll use a schema that requires device
+						effectiveEvent = {
+							...event,
+							input_schema: {
+								type: 'object',
+								properties: {
+									device: { type: 'object' },
+								},
+								required: ['device'],
+							},
+						}
+					}
+				} else if (
+					eventData.event_code === 'execute_command' &&
+					eventData.config?.command
+				) {
+					// Commands always require device
+					effectiveEvent = {
+						...event,
+						input_schema: {
+							type: 'object',
+							properties: {
+								device: { type: 'object' },
+							},
+							required: ['device'],
+						},
+					}
+				}
+
+				const validation = validateConnection(trigger, effectiveEvent)
+				if (!validation.valid) {
+					return {
+						...edge,
+						style: { stroke: '#ef4444' },
+						animated: false,
+						data: {
+							...edge.data,
+							validationError: validation.error,
+						},
+					}
+				}
+
+				return {
+					...edge,
+					style: { stroke: '#22c55e' },
+					animated: true,
+					data: {
+						...edge.data,
+						validationError: undefined,
+					},
+				}
+			})
+		})
+	}, [triggers, events, setEdges])
+
+	// Update internal nodes ref and prop ref when nodes change, and trigger validation
 	useEffect(() => {
+		internalNodesRef.current = nodes
 		if (nodesRef) {
 			nodesRef.current = nodes
 		}
-	}, [nodes, nodesRef])
+		// Trigger validation when nodes change (including config changes)
+		// This ensures validation runs when node configs are updated via updateNodeConfig
+		if (edges.length > 0) {
+			const timeoutId = setTimeout(() => {
+				validateAllEdges()
+			}, 100)
+			return () => clearTimeout(timeoutId)
+		}
+	}, [nodes, edges.length, validateAllEdges, nodesRef])
 
 	useEffect(() => {
 		if (edgesRef) {
@@ -193,14 +353,28 @@ export default function WiringCanvas({
 		}
 	}, [edges, edgesRef])
 
+
+	// Check for invalid edges and notify parent
+	useEffect(() => {
+		if (onValidationChange) {
+			const hasInvalid = edges.some(
+				edge => edge.style?.stroke === '#ef4444'
+			)
+			onValidationChange(hasInvalid)
+		}
+	}, [edges, onValidationChange])
+
 	// Handle node changes
 	const handleNodesChange = useCallback(
 		(changes: any) => {
 			onNodesChangeInternal(changes)
-			// Don't call onNodesChange here - it causes infinite loops
-			// Parent will get updates via nodesRef or by reading nodes state when needed
+			// Re-validate edges after node changes (especially config changes)
+			// Use a longer timeout to ensure state has updated
+			setTimeout(() => {
+				validateAllEdges()
+			}, 150)
 		},
-		[onNodesChangeInternal]
+		[onNodesChangeInternal, validateAllEdges]
 	)
 
 	// Don't automatically notify parent on every node change - this causes infinite loops
@@ -294,22 +468,111 @@ export default function WiringCanvas({
 				return
 			}
 
-			// Validate the connection
-			const validation = validateConnection(trigger, event)
-			if (!validation.valid) {
-				alert(`Invalid connection: ${validation.error}`)
+			// Allow all connections - validation will happen in validateAllEdges
+			// Get the event node from the nodes array
+			const eventNode = nodes.find(n => n.id === params.target)
+
+			if (!eventNode) {
+				// Node not found, cancel connection
 				return
 			}
 
-			// Add the edge
-			setEdges(eds => addEdge({ ...params, animated: true }, eds))
+			// Get effective event schema based on node configuration
+			let effectiveEvent = event
+			if (eventNode?.data) {
+				const eventData = eventNode.data as any
+				// For show_notification, use the selected notification type's variable_schema
+				if (
+					eventData.event_code === 'show_notification' &&
+					eventData.config?.notification_id
+				) {
+					// Find the notification type from the events array (which includes availableNotificationTypes)
+					const fullEvent = events.find(e => e.id === eventId)
+					if (fullEvent?.availableNotificationTypes) {
+						const selectedType =
+							fullEvent.availableNotificationTypes.find(
+								(nt: any) =>
+									nt.id.toString() ===
+									eventData.config.notification_id.toString()
+							)
+						if (selectedType?.variable_schema) {
+							// Use the notification type's variable_schema as the effective input schema
+							effectiveEvent = {
+								...event,
+								input_schema: selectedType.variable_schema,
+							}
+						} else {
+							// No variable_schema means no requirements
+							effectiveEvent = {
+								...event,
+								input_schema: {
+									type: 'object',
+									properties: {},
+									required: [],
+								},
+							}
+						}
+					}
+				}
+				// For send_email, use the selected message's variable_schema
+				else if (
+					eventData.event_code === 'send_email' &&
+					eventData.config?.message_code
+				) {
+					const fullEvent = events.find(e => e.id === eventId)
+					if (fullEvent?.availableMessages) {
+						// Messages typically require device data, but we could enhance this later
+						// For now, we'll use a schema that requires device
+						effectiveEvent = {
+							...event,
+							input_schema: {
+								type: 'object',
+								properties: {
+									device: { type: 'object' },
+								},
+								required: ['device'],
+							},
+						}
+					}
+				}
+				// For execute_command, always requires device
+				else if (
+					eventData.event_code === 'execute_command' &&
+					eventData.config?.command
+				) {
+					effectiveEvent = {
+						...event,
+						input_schema: {
+							type: 'object',
+							properties: {
+								device: { type: 'object' },
+							},
+							required: ['device'],
+						},
+					}
+				}
+			}
+
+			// Validate the connection with effective schema
+			const validation = validateConnection(trigger, effectiveEvent)
+
+			// Always allow the connection, but mark it appropriately
+			const newEdge = {
+				...params,
+				animated: validation.valid,
+				style: { stroke: validation.valid ? '#22c55e' : '#ef4444' },
+				data: {
+					validationError: validation.valid ? undefined : validation.error,
+				},
+			}
+			setEdges(eds => addEdge(newEdge, eds))
 
 			// Call parent callback if provided
 			if (onConnectProp) {
 				onConnectProp(params)
 			}
 		},
-		[triggers, events, onConnectProp, setEdges]
+		[triggers, events, nodes, onConnectProp, setEdges]
 	)
 
 	return (
@@ -326,6 +589,7 @@ export default function WiringCanvas({
 				onNodeContextMenu={onNodeContextMenu}
 				onEdgeContextMenu={onEdgeContextMenu}
 				nodeTypes={nodeTypes}
+				edgeTypes={edgeTypes}
 				fitView
 				className={styles.flow}
 				deleteKeyCode={null} // Disable default delete key

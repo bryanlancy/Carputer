@@ -1,0 +1,27 @@
+.tooltipContainer {
+	pointer-events: none;
+}
+
+.tooltip {
+	background: #1f2937;
+	color: white;
+	padding: 8px 12px;
+	border-radius: 6px;
+	font-size: 12px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+		0 2px 4px -1px rgba(0, 0, 0, 0.06);
+	max-width: 280px;
+	word-wrap: break-word;
+}
+
+.tooltipHeader {
+	font-weight: 600;
+	margin-bottom: 4px;
+	color: #fca5a5;
+}
+
+.tooltipContent {
+	color: #e5e7eb;
+	line-height: 1.4;
+}
+
