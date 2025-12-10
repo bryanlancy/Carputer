@@ -9,140 +9,142 @@ import { NextRequest, NextResponse } from 'next/server'
  * This proxy routes /api/auth/v1/* requests to GoTrue on port 9999
  */
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
+	request: NextRequest,
+	{ params }: { params: Promise<{ path: string[] }> }
 ) {
-  return handleRequest(request, params.path, 'GET')
+	const { path } = await params
+	return handleRequest(request, path, 'GET')
 }
 
 export async function POST(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
+	request: NextRequest,
+	{ params }: { params: Promise<{ path: string[] }> }
 ) {
-  return handleRequest(request, params.path, 'POST')
+	const { path } = await params
+	return handleRequest(request, path, 'POST')
 }
 
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
+	request: NextRequest,
+	{ params }: { params: Promise<{ path: string[] }> }
 ) {
-  return handleRequest(request, params.path, 'PUT')
+	const { path } = await params
+	return handleRequest(request, path, 'PUT')
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
+	request: NextRequest,
+	{ params }: { params: Promise<{ path: string[] }> }
 ) {
-  return handleRequest(request, params.path, 'DELETE')
+	const { path } = await params
+	return handleRequest(request, path, 'DELETE')
 }
 
 async function handleRequest(
-  request: NextRequest,
-  pathSegments: string[],
-  method: string
+	request: NextRequest,
+	pathSegments: string[],
+	method: string
 ) {
-  // In Docker, use the service name 'auth' to connect to GoTrue
-  // In local dev, use localhost
-  // The NEXT_PUBLIC_SUPABASE_URL is for client-side, but server-side needs the internal Docker URL
-  const isDocker = process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV === 'true'
-  const gotrueUrl = isDocker
-    ? 'http://auth:9999'  // Docker service name
-    : (process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:9999')
+	// In Docker, use the service name 'auth' to connect to GoTrue
+	// In local dev, use localhost
+	// The NEXT_PUBLIC_SUPABASE_URL is for client-side, but server-side needs the internal Docker URL
+	const isDocker =
+		process.env.NODE_ENV === 'production' ||
+		process.env.DOCKER_ENV === 'true'
+	const gotrueUrl = isDocker
+		? 'http://auth:9999' // Docker service name
+		: process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:9999'
 
-  // The Supabase client calls /auth/v1/token, /auth/v1/signup, etc.
-  // pathSegments will be ['auth', 'v1', 'token'] or ['auth', 'v1', 'signup'], etc.
-  // We need to extract the actual endpoint (last segment) and route to GoTrue
+	// The Supabase client calls /auth/v1/token, /auth/v1/signup, etc.
+	// pathSegments will be ['auth', 'v1', 'token'] or ['auth', 'v1', 'signup'], etc.
+	// We need to extract the actual endpoint (last segment) and route to GoTrue
 
-  // Remove 'auth' and 'v1' prefixes if present
-  const segments = [...pathSegments]
-  if (segments[0] === 'auth') segments.shift()
-  if (segments[0] === 'v1') segments.shift()
+	// Remove 'auth' and 'v1' prefixes if present
+	const segments = [...pathSegments]
+	if (segments[0] === 'auth') segments.shift()
+	if (segments[0] === 'v1') segments.shift()
 
-  // Get the endpoint (last segment after removing prefixes)
-  const endpoint = segments[segments.length - 1]
+	// Get the endpoint (last segment after removing prefixes)
+	const endpoint = segments[segments.length - 1]
 
-  // Map Supabase client paths to GoTrue paths
-  const pathMap: Record<string, string> = {
-    'token': 'token',
-    'signup': 'signup',
-    'logout': 'logout',
-    'user': 'user',
-    'admin': 'admin',
-    'recover': 'recover',
-    'verify': 'verify',
-    'resend': 'resend',
-  }
+	// Map Supabase client paths to GoTrue paths
+	const pathMap: Record<string, string> = {
+		token: 'token',
+		signup: 'signup',
+		logout: 'logout',
+		user: 'user',
+		admin: 'admin',
+		recover: 'recover',
+		verify: 'verify',
+		resend: 'resend',
+	}
 
-  const gotruePath = pathMap[endpoint] || endpoint
+	const gotruePath = pathMap[endpoint] || endpoint
 
-  // Build the GoTrue URL
-  const url = new URL(`${gotrueUrl}/${gotruePath}`)
+	// Build the GoTrue URL
+	const url = new URL(`${gotrueUrl}/${gotruePath}`)
 
-  // Copy query parameters
-  request.nextUrl.searchParams.forEach((value, key) => {
-    url.searchParams.append(key, value)
-  })
+	// Copy query parameters
+	request.nextUrl.searchParams.forEach((value, key) => {
+		url.searchParams.append(key, value)
+	})
 
-  // Get request body if it exists
-  let body: string | undefined
-  if (method === 'POST' || method === 'PUT') {
-    try {
-      body = await request.text()
-    } catch (e) {
-      // No body
-    }
-  }
+	// Get request body if it exists
+	let body: string | undefined
+	if (method === 'POST' || method === 'PUT') {
+		try {
+			body = await request.text()
+		} catch (e) {
+			// No body
+		}
+	}
 
-  // Forward the request to GoTrue
-  try {
-    const response = await fetch(url.toString(), {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(request.headers.get('authorization') && {
-          'Authorization': request.headers.get('authorization')!,
-        }),
-      },
-      body,
-    })
+	// Forward the request to GoTrue
+	try {
+		const response = await fetch(url.toString(), {
+			method,
+			headers: {
+				'Content-Type': 'application/json',
+				...(request.headers.get('authorization') && {
+					Authorization: request.headers.get('authorization')!,
+				}),
+			},
+			body,
+		})
 
-    // For logout, even if GoTrue returns an error, return success
-    // This allows the client to clear local state even if the server-side logout fails
-    if (endpoint === 'logout') {
-      const data = await response.text().catch(() => '{}')
-      // Return success even if GoTrue fails
-      return new NextResponse(data || '{}', {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-    }
+		// For logout, even if GoTrue returns an error, return success
+		// This allows the client to clear local state even if the server-side logout fails
+		if (endpoint === 'logout') {
+			const data = await response.text().catch(() => '{}')
+			// Return success even if GoTrue fails
+			return new NextResponse(data || '{}', {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			})
+		}
 
-    const data = await response.text()
+		const data = await response.text()
 
-    return new NextResponse(data, {
-      status: response.status,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-  } catch (error: any) {
-    // For logout, return success even if there's an error
-    // This allows the client to clear local state
-    if (endpoint === 'logout') {
-      return new NextResponse('{}', {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-    }
+		return new NextResponse(data, {
+			status: response.status,
+			headers: {
+				'Content-Type': 'application/json',
+			},
+		})
+	} catch (error: any) {
+		// For logout, return success even if there's an error
+		// This allows the client to clear local state
+		if (endpoint === 'logout') {
+			return new NextResponse('{}', {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			})
+		}
 
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    )
-  }
+		return NextResponse.json({ error: error.message }, { status: 500 })
+	}
 }
-
