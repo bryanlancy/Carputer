@@ -66,7 +66,7 @@ export default function NotificationRuleManager() {
         fetch(`${apiUrl}/api/admin/notifications/rules`, {
           headers: { 'Authorization': `Bearer ${token}` },
         }),
-        fetch(`${apiUrl}/api/admin/notifications/types`, {
+        fetch(`${apiUrl}/api/admin/notifications`, {
           headers: { 'Authorization': `Bearer ${token}` },
         }),
       ])

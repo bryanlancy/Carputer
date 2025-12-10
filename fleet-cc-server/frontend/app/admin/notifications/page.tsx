@@ -40,7 +40,7 @@ export default function AdminNotificationsPage() {
       const token = localStorage.getItem('auth_token') // Get token from your auth system
 
       if (activeTab === 'types') {
-        const response = await fetch(`${apiUrl}/api/admin/notifications/types`, {
+        const response = await fetch(`${apiUrl}/api/admin/notifications`, {
           headers: {
             'Authorization': token ? `Bearer ${token}` : '',
           },

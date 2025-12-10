@@ -37,9 +37,16 @@ export default function ActionSidebar({
 					<div className={styles.empty}>No actions available</div>
 				) : (
 					enabledActions.map(action => {
+						// Check if action has variable data types
+						const hasVariableTypes =
+							action.event_code === 'show_notification' ||
+							action.event_code === 'send_email' ||
+							action.event_code === 'execute_command'
+
 						const dataTypes = action.input_schema
 							? extractDataTypes(action.input_schema)
 							: []
+
 						return (
 							<div
 								key={action.id}
@@ -61,10 +68,18 @@ export default function ActionSidebar({
 									{action.handler_type}
 								</div>
 								<div className={styles.dataTypes}>
-									<DataTypeIcons
-										types={dataTypes}
-										size='small'
-									/>
+									{hasVariableTypes ? (
+										<span
+											className={styles.variableIndicator}
+											title='Data types may vary based on configuration'>
+											Variable
+										</span>
+									) : (
+										<DataTypeIcons
+											types={dataTypes}
+											size='small'
+										/>
+									)}
 								</div>
 								<div className={styles.code}>
 									{action.event_code}
