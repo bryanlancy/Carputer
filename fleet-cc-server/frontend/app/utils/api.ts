@@ -1,6 +1,29 @@
 import { supabase } from './supabase'
 
 /**
+ * Safely parse JSON from a Response
+ * Returns null if parsing fails or response is empty
+ */
+async function safeJsonParse(response: Response): Promise<any | null> {
+	try {
+		const contentType = response.headers.get('content-type')
+		if (!contentType || !contentType.includes('application/json')) {
+			return null
+		}
+
+		const text = await response.text()
+		if (!text || text.trim().length === 0) {
+			return null
+		}
+
+		return JSON.parse(text)
+	} catch (error) {
+		console.warn('Failed to parse JSON from response:', error)
+		return null
+	}
+}
+
+/**
  * Get the API URL, auto-detecting from the current hostname if needed
  * This ensures the frontend can connect to the backend when accessed from different machines
  */
@@ -39,7 +62,9 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
 	}
 
 	try {
-		const { data: { session } } = await supabase.auth.getSession()
+		const {
+			data: { session },
+		} = await supabase.auth.getSession()
 		if (session?.access_token) {
 			headers['Authorization'] = `Bearer ${session.access_token}`
 		}
@@ -53,6 +78,8 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
 /**
  * Make an authenticated API request
  * Automatically includes auth token in headers
+ * Also dispatches an event to reset the inactivity timer on successful requests
+ * Handles 401 responses by triggering logout
  */
 export async function authenticatedFetch(
 	url: string,
@@ -60,12 +87,63 @@ export async function authenticatedFetch(
 ): Promise<Response> {
 	const headers = await getAuthHeaders()
 
-	return fetch(url, {
+	const response = await fetch(url, {
 		...options,
 		headers: {
 			...headers,
 			...options.headers,
 		},
 	})
-}
 
+	// Handle 401 Unauthorized - session expired or invalid
+	if (response.status === 401 && typeof window !== 'undefined') {
+		// Check if we sent an auth token (meaning we thought we were authenticated)
+		// If we did and got 401, the backend has revoked our session
+		const hadAuthToken =
+			headers['Authorization'] || headers['authorization']
+
+		if (hadAuthToken) {
+			// We had a token but backend rejected it - session was revoked
+			// Verify we actually have a session before triggering logout
+			// This avoids false positives if the token was removed between header creation and request
+			try {
+				const {
+					data: { session },
+				} = await supabase.auth.getSession()
+
+				if (session) {
+					// We have a session but backend rejected it - session was revoked
+					console.warn(
+						'[API] Received 401 with active session - backend revoked session'
+					)
+					window.dispatchEvent(
+						new CustomEvent('sessionExpired', {
+							detail: { reason: 'backend_revoked' },
+						})
+					)
+				}
+			} catch (error) {
+				// If we can't check session, still dispatch event as a precaution
+				console.warn(
+					'[API] Received 401 with auth token, error checking session:',
+					error
+				)
+				window.dispatchEvent(
+					new CustomEvent('sessionExpired', {
+						detail: { reason: 'backend_revoked' },
+					})
+				)
+			}
+		}
+		// If no auth token was sent, this is expected (e.g., login page) - don't trigger logout
+	}
+
+	// Reset inactivity timer on successful API calls (represents user activity)
+	// Only reset on successful responses (2xx status codes)
+	if (response.ok && typeof window !== 'undefined') {
+		// Dispatch custom event that AuthContext can listen to
+		window.dispatchEvent(new CustomEvent('apiActivity'))
+	}
+
+	return response
+}
