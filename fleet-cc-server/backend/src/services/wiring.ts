@@ -50,6 +50,7 @@ export class WiringService {
 		}
 
 		// Upsert wiring configuration
+		// Note: rule_id is deprecated and optional (nullable) for workspace-based configs
 		return this.prisma.wiringConfiguration.upsert({
 			where: { workspace_id: workspaceId },
 			update: {
@@ -57,9 +58,11 @@ export class WiringService {
 				edges: data.edges,
 				viewport: data.viewport ?? null,
 				node_config: data.node_config ?? null,
+				// rule_id is optional and defaults to null if not provided
 			},
 			create: {
 				workspace_id: workspaceId,
+				// rule_id is optional and defaults to null if not provided
 				nodes: data.nodes,
 				edges: data.edges,
 				viewport: data.viewport ?? null,
