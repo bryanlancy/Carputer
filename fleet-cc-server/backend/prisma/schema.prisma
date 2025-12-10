@@ -51,7 +51,6 @@ model Device {
   // Relations
   commands                Command[]
   device_logs             DeviceLog[]
-  notifications           Notification[]
 
   @@index([device_id])
   @@index([status])
@@ -90,8 +89,6 @@ model DeviceLog {
   file_size   BigInt?
   metadata    Json?
 
-  // Relations
-  notifications          Notification[]
 
   @@index([device_id])
   @@map("device_logs")
@@ -141,46 +138,28 @@ model DeviceRegistrationAttempt {
   @@map("device_registration_attempts")
 }
 
-model NotificationType {
-  id          Int       @id @default(autoincrement())
-  type_code   String    @unique @db.VarChar(100)
-  type_name   String    @db.VarChar(255)
-  description String?   @db.Text
-  severity    String    @default("info") @db.VarChar(50) // info, warning, error, critical
-  enabled     Boolean   @default(true)
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @default(now()) @updatedAt
-
-  // Relations
-  notifications       Notification[]
-
-  @@index([type_code])
-  @@index([enabled])
-  @@map("notification_types")
-}
-
 model Notification {
-  id                  Int             @id @default(autoincrement())
-  device_id           Int
-  device              Device          @relation(fields: [device_id], references: [id], onDelete: Cascade)
-  notification_type_id Int
-  notification_type   NotificationType @relation(fields: [notification_type_id], references: [id], onDelete: Restrict)
-  device_log_id       Int?
-  device_log          DeviceLog?      @relation(fields: [device_log_id], references: [id], onDelete: SetNull)
-  title               String          @db.VarChar(255)
-  message             String?         @db.Text
-  metadata            Json?
-  show_in_feed        Boolean         @default(true)
-  created_at          DateTime        @default(now())
+  id                  Int       @id @default(autoincrement())
+  name                String    @db.VarChar(255)
+  description         String?   @db.Text
+  enabled             Boolean   @default(true)
+  notification_type    String    @default("default") @db.VarChar(50) // warning, alert, default, success
+  // Fields merged from notification_rules
+  target_users        Json?     // Array of user IDs or role names, null means all users
+  message_template    String?   @db.Text
+  priority            Int       @default(0)
+  variable_schema     Json?     // JSON Schema defining what variables this notification uses
+  show_in_feed        Boolean   @default(true)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @default(now()) @updatedAt
 
   // Relations
   user_notifications   UserNotification[]
 
-  @@index([device_id])
-  @@index([notification_type_id])
-  @@index([device_log_id])
+  @@index([enabled])
+  @@index([priority])
   @@index([show_in_feed])
-  @@index([created_at])
+  @@index([notification_type])
   @@map("notifications")
 }
 
@@ -233,36 +212,9 @@ model UserNotification {
   @@map("user_notifications")
 }
 
-model NotificationRule {
-  id                  Int             @id @default(autoincrement())
-  name                String          @db.VarChar(255)
-  description         String?        @db.Text
-  trigger_type        String          @db.VarChar(50) // date_time, backend_event, user_driven
-  trigger_config      Json
-  notification_type_code String       @db.VarChar(100) // Reference to NotificationType.type_code (manual relation)
-  target_users        Json?           // Array of user IDs or role names, null means all users
-  message_template    String?         @db.Text
-  enabled             Boolean         @default(true)
-  priority            Int             @default(0)
-  created_at          DateTime        @default(now())
-  updated_at          DateTime        @default(now()) @updatedAt
-
-  // Relations
-  triggers            NotificationTrigger[]
-  trigger_event_connections TriggerEventConnection[]
-  wiring_configuration WiringConfiguration?
-
-  @@index([enabled])
-  @@index([trigger_type])
-  @@index([priority])
-  @@index([notification_type_code])
-  @@map("notification_rules")
-}
-
 model NotificationTrigger {
   id                  Int             @id @default(autoincrement())
-  rule_id             Int?
-  rule                NotificationRule? @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  rule_id             Int?            // Deprecated: notification_rules table has been removed
   trigger_type        String          @db.VarChar(50) // date_time, backend_event, user_driven
   trigger_config      Json
   scheduled_at        DateTime?
@@ -332,8 +284,7 @@ model Event {
 
 model TriggerEventConnection {
   id                  Int             @id @default(autoincrement())
-  rule_id             Int
-  rule                NotificationRule @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  rule_id             Int             // Deprecated: notification_rules table has been removed
   trigger_id          Int
   trigger              Trigger         @relation(fields: [trigger_id], references: [id], onDelete: Cascade)
   event_id             Int
@@ -366,8 +317,7 @@ model WiringConfiguration {
   id                  Int             @id @default(autoincrement())
   workspace_id        Int             @unique
   workspace           Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  rule_id             Int?            @unique // Deprecated: kept for backward compatibility
-  rule                NotificationRule? @relation(fields: [rule_id], references: [id], onDelete: SetNull)
+  rule_id             Int?            @unique // Deprecated: notification_rules table has been removed
   nodes               Json            // React Flow nodes with positions
   edges               Json            // React Flow edges/connections
   viewport            Json?           // Viewport position/zoom
