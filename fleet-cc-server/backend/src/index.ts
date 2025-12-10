@@ -27,6 +27,8 @@ import adminEventsRoutes from './routes/admin/events'
 import adminWiringRoutes from './routes/admin/wiring'
 import adminWorkspacesRoutes from './routes/admin/workspaces'
 import adminMessagesRoutes from './routes/admin/messages'
+import adminVerifyRoutes from './routes/admin/verify'
+import authRoutes from './routes/auth'
 import realtimeRoutes, {
 	broadcastDeviceUpdate,
 	broadcastNotification,
@@ -39,6 +41,7 @@ import {
 import { initializeNotificationEventListeners } from './events/notificationEvents'
 import { initializeScheduledNotificationsWorker } from './jobs/scheduledNotifications'
 import { authenticate, requireAuth } from './middleware/auth'
+import { getSessionActivityService } from './services/sessionActivity'
 
 // Initialize Express app
 const app = express()
@@ -214,11 +217,13 @@ app.use('/api/devices', deviceRoutes)
 // Protected routes (require authentication)
 // authenticate middleware extracts user from token and sets req.user
 // requireAuth middleware checks if req.user exists and returns 401 if not
+app.use('/api/auth', authenticate, requireAuth, authRoutes)
 app.use('/api/commands', authenticate, requireAuth, commandRoutes)
 app.use('/api/metrics', authenticate, requireAuth, metricsRoutes)
 app.use('/api/images', authenticate, requireAuth, imageRoutes)
 app.use('/api/verified-images', authenticate, requireAuth, verifiedImageRoutes)
 app.use('/api/notifications', authenticate, requireAuth, notificationRoutes)
+app.use('/api/admin/verify', authenticate, requireAuth, adminVerifyRoutes)
 app.use(
 	'/api/admin/notifications',
 	authenticate,
@@ -284,11 +289,13 @@ console.log(
 process.on('SIGTERM', () => {
 	console.log('Stopping offline device check...')
 	clearInterval(offlineCheckInterval)
+	sessionActivityService.stopPeriodicCheck()
 })
 
 process.on('SIGINT', () => {
 	console.log('Stopping offline device check...')
 	clearInterval(offlineCheckInterval)
+	sessionActivityService.stopPeriodicCheck()
 })
 
 // Export broadcast functions for use in routes
@@ -355,6 +362,10 @@ initializeScheduledNotificationsWorker(prisma)
 			'Server will continue without scheduled notifications. Ensure Redis is running to enable this feature.'
 		)
 	})
+
+// Initialize session activity tracking and start periodic expiration checks
+const sessionActivityService = getSessionActivityService()
+sessionActivityService.startPeriodicCheck()
 
 // Type augmentation for Express Request
 declare global {
