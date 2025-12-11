@@ -1,231 +1,498 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
 import { formatDistanceToNow } from 'date-fns'
 import { parseMarkdown } from '../utils/markdown'
+import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
 import styles from './NotificationFeed.module.scss'
 
+interface Tag {
+	id: number
+	name: string
+	color?: string | null
+	category?: string | null
+	inherited?: boolean
+}
+
 interface Notification {
-  id: number
-  name?: string
-  title?: string
-  message?: string | null
-  message_template?: string | null
-  notification_type?: 'default' | 'warning' | 'alert' | 'success' | string
-  device: {
-    id: number
-    device_id: string
-    hostname: string | null
-  } | null
-  viewed: boolean
-  viewed_at: string | null
-  created_at: string
+	id: number
+	notification_id?: number
+	name?: string
+	title?: string
+	message?: string | null
+	message_template?: string | null
+	notification_type?: 'default' | 'warning' | 'alert' | 'success' | string
+	device: {
+		id: number
+		device_id: string
+		hostname: string | null
+	} | null
+	viewed: boolean
+	viewed_at: string | null
+	created_at: string
+	tags?: Tag[]
 }
 
 interface NotificationFeedProps {
-  isOpen: boolean
-  onClose: () => void
+	isOpen: boolean
+	onClose: () => void
 }
 
-export default function NotificationFeed({ isOpen, onClose }: NotificationFeedProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [loading, setLoading] = useState(true)
-  const [unviewedCount, setUnviewedCount] = useState(0)
-  const { session } = useAuth()
-  const feedRef = useRef<HTMLDivElement>(null)
+// Global state for unviewed count (shared across components)
+let globalUnviewedCount = 0
+const unviewedCountListeners = new Set<(count: number) => void>()
 
-  useEffect(() => {
-    if (isOpen && session) {
-      loadNotifications()
-      loadUnviewedCount()
-    }
-  }, [isOpen, session])
+export function updateGlobalUnviewedCount(count: number) {
+	globalUnviewedCount = count
+	unviewedCountListeners.forEach(listener => listener(count))
+}
 
-  // Close feed when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (feedRef.current && !feedRef.current.contains(event.target as Node)) {
-        onClose()
-      }
-    }
+export function getUnviewedCount() {
+	return globalUnviewedCount
+}
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isOpen, onClose])
+export default function NotificationFeed({
+	isOpen,
+	onClose,
+}: NotificationFeedProps) {
+	const [notifications, setNotifications] = useState<Notification[]>([])
+	const [loading, setLoading] = useState(true)
+	const [unviewedCount, setUnviewedCount] = useState(0)
+	const [hidingNotificationId, setHidingNotificationId] = useState<
+		number | null
+	>(null)
+	const { session } = useAuth()
+	const feedRef = useRef<HTMLDivElement>(null)
 
-  const loadNotifications = async () => {
-    if (!session?.access_token) return
+	// Handle WebSocket messages for real-time notifications
+	const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+		if (message.type === 'notification' && message.notification) {
+			const newNotification = message.notification as Notification
+			// Add new notification to the top of the list
+			setNotifications(prev => {
+				// Check if notification already exists
+				const exists = prev.some(n => n.id === newNotification.id)
+				if (exists) {
+					return prev.map(n =>
+						n.id === newNotification.id
+							? { ...n, ...newNotification }
+							: n
+					)
+				}
+				return [newNotification, ...prev]
+			})
+			// Update unviewed count if notification is not viewed
+			if (!newNotification.viewed) {
+				const newCount = globalUnviewedCount + 1
+				setUnviewedCount(newCount)
+				updateGlobalUnviewedCount(newCount)
+			}
+		}
+	}, [])
 
-    try {
-      setLoading(true)
-      const apiUrl = getApiUrl()
-      const response = await fetch(`${apiUrl}/api/notifications/user/me/feed?limit=20`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      })
+	// Subscribe to WebSocket
+	const { connected } = useWebSocket(handleWebSocketMessage, [
+		'notifications',
+	])
 
-      if (response.ok) {
-        const data = await response.json()
-        setNotifications(data)
-      }
-    } catch (error) {
-      console.error('Error loading notifications:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+	useEffect(() => {
+		if (isOpen && session) {
+			loadNotifications()
+			loadUnviewedCount()
+		}
+	}, [isOpen, session])
 
-  const loadUnviewedCount = async () => {
-    if (!session?.access_token) return
+	// Subscribe to global unviewed count updates
+	useEffect(() => {
+		const listener = (count: number) => setUnviewedCount(count)
+		unviewedCountListeners.add(listener)
+		setUnviewedCount(globalUnviewedCount)
+		return () => {
+			unviewedCountListeners.delete(listener)
+		}
+	}, [])
 
-    try {
-      const apiUrl = getApiUrl()
-      const response = await fetch(`${apiUrl}/api/notifications/user/me/unread-count`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      })
+	// Close feed when clicking outside
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				feedRef.current &&
+				!feedRef.current.contains(event.target as Node)
+			) {
+				onClose()
+			}
+		}
 
-      if (response.ok) {
-        const data = await response.json()
-        setUnviewedCount(data.count || 0)
-      }
-    } catch (error) {
-      console.error('Error loading unviewed count:', error)
-    }
-  }
+		if (isOpen) {
+			document.addEventListener('mousedown', handleClickOutside)
+			return () =>
+				document.removeEventListener('mousedown', handleClickOutside)
+		}
+	}, [isOpen, onClose])
 
-  const markAsViewed = async (notificationId: number) => {
-    if (!session?.access_token) return
+	const loadNotifications = async () => {
+		if (!session?.access_token) return
 
-    try {
-      const apiUrl = getApiUrl()
-      await fetch(`${apiUrl}/api/notifications/${notificationId}/view`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      })
+		try {
+			setLoading(true)
+			const apiUrl = getApiUrl()
+			const response = await fetch(
+				`${apiUrl}/api/notifications/user/me/feed?limit=20`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.access_token}`,
+					},
+				}
+			)
 
-      // Update local state
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, viewed: true, viewed_at: new Date().toISOString() } : n
-        )
-      )
-      setUnviewedCount((prev) => Math.max(0, prev - 1))
-    } catch (error) {
-      console.error('Error marking notification as viewed:', error)
-    }
-  }
+			if (response.ok) {
+				const data = await response.json()
+				setNotifications(data)
+			}
+		} catch (error) {
+			console.error('Error loading notifications:', error)
+		} finally {
+			setLoading(false)
+		}
+	}
 
-  if (!isOpen) return null
+	const loadUnviewedCount = async () => {
+		if (!session?.access_token) return
 
-  return (
-    <div className={styles.feedContainer} ref={feedRef}>
-      <div className={styles.feedHeader}>
-        <h3>Notifications</h3>
-        <button onClick={onClose} className={styles.closeButton}>
-          ×
-        </button>
-      </div>
+		try {
+			const apiUrl = getApiUrl()
+			const response = await fetch(
+				`${apiUrl}/api/notifications/user/me/unread-count`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.access_token}`,
+					},
+				}
+			)
 
-      <div className={styles.feedContent}>
-        {loading ? (
-          <div className={styles.loading}>Loading notifications...</div>
-        ) : notifications.length === 0 ? (
-          <div className={styles.empty}>No notifications</div>
-        ) : (
-          <div className={styles.notificationList}>
-            {notifications.map((notification) => {
-              const notificationType = (notification.notification_type || 'default') as 'default' | 'warning' | 'alert' | 'success'
-              const displayTitle = notification.title || notification.name || 'Notification'
-              const displayMessage = notification.message || notification.message_template || null
+			if (response.ok) {
+				const data = await response.json()
+				setUnviewedCount(data.count || 0)
+			}
+		} catch (error) {
+			console.error('Error loading unviewed count:', error)
+		}
+	}
 
-              return (
-              <div
-                key={notification.id}
-                className={`${styles.notificationItem} ${styles[`notificationType_${notificationType}`]} ${!notification.viewed ? styles.unviewed : ''}`}
-                onClick={() => !notification.viewed && markAsViewed(notification.id)}
-              >
-                <div className={styles.notificationHeader}>
-                  <span className={styles.notificationTitle}>{displayTitle}</span>
-                  {!notification.viewed && <span className={styles.unviewedBadge}>New</span>}
-                </div>
-                {displayMessage && (
-                  <div
-                    className={styles.notificationMessage}
-                    dangerouslySetInnerHTML={{ __html: parseMarkdown(displayMessage) }}
-                  />
-                )}
-                <div className={styles.notificationMeta}>
-                  <span className={styles.notificationTime}>
-                    {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                  </span>
-                  {notification.device && (
-                    <span className={styles.deviceName}>{notification.device.hostname || notification.device.device_id}</span>
-                  )}
-                </div>
-              </div>
-            )})}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+	const markAsViewed = async (notificationId: number) => {
+		if (!session?.access_token) return
+
+		// Optimistically update UI immediately
+		setNotifications(prev =>
+			prev.map(n =>
+				n.id === notificationId
+					? {
+							...n,
+							viewed: true,
+							viewed_at: new Date().toISOString(),
+					  }
+					: n
+			)
+		)
+		const wasUnviewed = notifications.find(
+			n => n.id === notificationId && !n.viewed
+		)
+		if (wasUnviewed) {
+			const newCount = Math.max(0, unviewedCount - 1)
+			setUnviewedCount(newCount)
+			updateGlobalUnviewedCount(newCount)
+		}
+
+		try {
+			const apiUrl = getApiUrl()
+			await fetch(`${apiUrl}/api/notifications/${notificationId}/view`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${session.access_token}`,
+				},
+			})
+
+			// Reload count to ensure accuracy
+			loadUnviewedCount()
+		} catch (error) {
+			console.error('Error marking notification as viewed:', error)
+			// Revert optimistic update on error
+			loadNotifications()
+			loadUnviewedCount()
+		}
+	}
+
+	const hideFromFeed = async (notificationId: number) => {
+		if (!session?.access_token) return
+
+		setHidingNotificationId(notificationId)
+
+		try {
+			const apiUrl = getApiUrl()
+			await fetch(
+				`${apiUrl}/api/notifications/user/me/${notificationId}/hide`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${session.access_token}`,
+					},
+				}
+			)
+
+			// Remove from local state immediately
+			setNotifications(prev => prev.filter(n => n.id !== notificationId))
+		} catch (error) {
+			console.error('Error hiding notification:', error)
+		} finally {
+			setHidingNotificationId(null)
+		}
+	}
+
+	if (!isOpen) return null
+
+	return (
+		<div className={styles.feedContainer} ref={feedRef}>
+			<div className={styles.feedHeader}>
+				<h3>Notifications</h3>
+				<button onClick={onClose} className={styles.closeButton}>
+					×
+				</button>
+			</div>
+
+			<div className={styles.feedContent}>
+				{loading ? (
+					<div className={styles.loading}>
+						Loading notifications...
+					</div>
+				) : notifications.length === 0 ? (
+					<div className={styles.empty}>No notifications</div>
+				) : (
+					<div className={styles.notificationList}>
+						{notifications.map(notification => {
+							const notificationType =
+								(notification.notification_type ||
+									'default') as
+									| 'default'
+									| 'warning'
+									| 'alert'
+									| 'success'
+							const displayTitle =
+								notification.title ||
+								notification.name ||
+								'Notification'
+							// Use rendered message if available, otherwise fall back to template
+							const displayMessage =
+								notification.message ||
+								notification.message_template ||
+								null
+
+							return (
+								<div
+									key={notification.id}
+									className={`${styles.notificationItem} ${
+										styles[
+											`notificationType_${notificationType}`
+										]
+									} ${
+										!notification.viewed
+											? styles.unviewed
+											: ''
+									}`}>
+									<div
+										className={styles.notificationContent}
+										onClick={() =>
+											!notification.viewed &&
+											markAsViewed(notification.id)
+										}>
+										<div
+											className={
+												styles.notificationHeader
+											}>
+											<span
+												className={
+													styles.notificationTitle
+												}>
+												{displayTitle}
+											</span>
+											<div
+												className={
+													styles.notificationBadges
+												}>
+												{!notification.viewed && (
+													<span
+														className={
+															styles.unviewedBadge
+														}>
+														New
+													</span>
+												)}
+												{notification.tags &&
+													notification.tags.length >
+														0 && (
+														<div
+															className={
+																styles.tags
+															}>
+															{notification.tags.map(
+																tag => (
+																	<span
+																		key={
+																			tag.id
+																		}
+																		className={
+																			styles.tag
+																		}
+																		style={
+																			tag.color
+																				? {
+																						backgroundColor:
+																							tag.color +
+																							'20',
+																						color: tag.color,
+																						borderColor:
+																							tag.color,
+																				  }
+																				: {}
+																		}
+																		title={
+																			tag.inherited
+																				? 'Inherited tag'
+																				: ''
+																		}>
+																		{
+																			tag.name
+																		}
+																	</span>
+																)
+															)}
+														</div>
+													)}
+											</div>
+										</div>
+										{displayMessage && (
+											<div
+												className={
+													styles.notificationMessage
+												}
+												dangerouslySetInnerHTML={{
+													__html: parseMarkdown(
+														displayMessage
+													),
+												}}
+											/>
+										)}
+										<div
+											className={styles.notificationMeta}>
+											<span
+												className={
+													styles.notificationTime
+												}>
+												{formatDistanceToNow(
+													new Date(
+														notification.created_at
+													),
+													{ addSuffix: true }
+												)}
+											</span>
+											{notification.device && (
+												<span
+													className={
+														styles.deviceName
+													}>
+													{notification.device
+														.hostname ||
+														notification.device
+															.device_id}
+												</span>
+											)}
+										</div>
+									</div>
+									<button
+										className={styles.deleteButton}
+										onClick={e => {
+											e.stopPropagation()
+											hideFromFeed(notification.id)
+										}}
+										disabled={
+											hidingNotificationId ===
+											notification.id
+										}
+										title='Hide from feed'
+										aria-label='Hide notification'>
+										{hidingNotificationId ===
+										notification.id
+											? '⋯'
+											: '×'}
+									</button>
+								</div>
+							)
+						})}
+					</div>
+				)}
+			</div>
+		</div>
+	)
 }
 
 // Export function to get unviewed count for navbar badge
 export function useNotificationCount() {
-  const [count, setCount] = useState(0)
-  const { session } = useAuth()
+	const [count, setCount] = useState(globalUnviewedCount)
+	const { session } = useAuth()
 
-  useEffect(() => {
-    if (!session?.access_token) {
-      setCount(0)
-      return
-    }
+	useEffect(() => {
+		if (!session?.access_token) {
+			setCount(0)
+			setUnviewedCount(0)
+			return
+		}
 
-    let cancelled = false
+		let cancelled = false
 
-    const loadCount = async () => {
-      if (cancelled) return
+		const loadCount = async () => {
+			if (cancelled) return
 
-      try {
-        const apiUrl = getApiUrl()
-        const response = await fetch(`${apiUrl}/api/notifications/user/me/unread-count`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        })
+			try {
+				const apiUrl = getApiUrl()
+				const response = await fetch(
+					`${apiUrl}/api/notifications/user/me/unread-count`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.access_token}`,
+						},
+					}
+				)
 
-        if (cancelled) return
+				if (cancelled) return
 
-        if (response.ok) {
-          const data = await response.json()
-          setCount(data.count || 0)
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Error loading notification count:', error)
-        }
-      }
-    }
+				if (response.ok) {
+					const data = await response.json()
+					const newCount = data.count || 0
+					setCount(newCount)
+					setUnviewedCount(newCount)
+				}
+			} catch (error) {
+				if (!cancelled) {
+					console.error('Error loading notification count:', error)
+				}
+			}
+		}
 
-    loadCount()
-    // Refresh count every 30 seconds
-    const interval = setInterval(loadCount, 30000)
+		loadCount()
+		// Refresh count every 30 seconds (only if WebSocket is not connected)
+		const interval = setInterval(loadCount, 30000)
 
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [session?.access_token]) // Only depend on the access token, not the whole session object
+		// Subscribe to global updates
+		const listener = (newCount: number) => setCount(newCount)
+		unviewedCountListeners.add(listener)
 
-  return count
+		return () => {
+			cancelled = true
+			clearInterval(interval)
+			unviewedCountListeners.delete(listener)
+		}
+	}, [session?.access_token]) // Only depend on the access token, not the whole session object
+
+	return count
 }

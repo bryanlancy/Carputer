@@ -4,6 +4,7 @@ import { NotificationProviderWrapper } from './components/NotificationProviderWr
 import { AuthProvider } from './contexts/AuthContext'
 import { AuthGuard } from './components/AuthGuard'
 import { ConditionalNavbar } from './components/ConditionalNavbar'
+import NotificationPopupManager from './components/NotificationPopupManager'
 
 export const metadata: Metadata = {
 	title: 'Fleet Command & Control',
@@ -23,6 +24,7 @@ export default function RootLayout({
 						<AuthGuard>
 							<ConditionalNavbar />
 							{children}
+							<NotificationPopupManager />
 						</AuthGuard>
 					</NotificationProviderWrapper>
 				</AuthProvider>
