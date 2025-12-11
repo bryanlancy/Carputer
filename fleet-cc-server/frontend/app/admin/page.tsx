@@ -8,11 +8,12 @@ import AdminNotificationSettings from '../components/AdminNotificationSettings'
 import WiringManager from '../components/WiringManager'
 import TriggerManager from '../components/TriggerManager'
 import ActionManager from '../components/ActionManager'
+import TagManager from '../components/TagManager'
 import styles from './page.module.scss'
 
 export default function AdminPage() {
 	const [activeSection, setActiveSection] = useState<
-		'triggers' | 'actions' | 'messages' | 'wiring'
+		'triggers' | 'actions' | 'messages' | 'wiring' | 'tags'
 	>('triggers')
 	const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
 	const [loading, setLoading] = useState(true)
@@ -103,56 +104,82 @@ export default function AdminPage() {
 
 			<div className={styles.layout}>
 				<nav className={styles.sidebar}>
-					<ul>
-						<li>
-							<button
-								className={
-									activeSection === 'triggers'
-										? styles.active
-										: ''
-								}
-								onClick={() => setActiveSection('triggers')}>
-								<span className={styles.icon}>⚡</span>
-								Triggers
-							</button>
-						</li>
-						<li>
-							<button
-								className={
-									activeSection === 'actions'
-										? styles.active
-										: ''
-								}
-								onClick={() => setActiveSection('actions')}>
-								<span className={styles.icon}>🎯</span>
-								Actions
-							</button>
-						</li>
-						<li>
-							<button
-								className={
-									activeSection === 'messages'
-										? styles.active
-										: ''
-								}
-								onClick={() => setActiveSection('messages')}>
-								<span className={styles.icon}>💬</span>
-								Messages
-							</button>
-						</li>
-						<li>
-							<button
-								className={
-									activeSection === 'wiring'
-										? styles.active
-										: ''
-								}
-								onClick={() => setActiveSection('wiring')}>
-								<span className={styles.icon}>🔌</span>
-								Wiring
-							</button>
-						</li>
-					</ul>
+					<div className={styles.navGroup}>
+						<div className={styles.groupHeader}>
+							Message Configuration
+						</div>
+						<ul>
+							<li>
+								<button
+									className={
+										activeSection === 'triggers'
+											? styles.active
+											: ''
+									}
+									onClick={() =>
+										setActiveSection('triggers')
+									}>
+									<span className={styles.icon}>⚡</span>
+									Triggers
+								</button>
+							</li>
+							<li>
+								<button
+									className={
+										activeSection === 'actions'
+											? styles.active
+											: ''
+									}
+									onClick={() => setActiveSection('actions')}>
+									<span className={styles.icon}>🎯</span>
+									Actions
+								</button>
+							</li>
+							<li>
+								<button
+									className={
+										activeSection === 'messages'
+											? styles.active
+											: ''
+									}
+									onClick={() =>
+										setActiveSection('messages')
+									}>
+									<span className={styles.icon}>💬</span>
+									Messages
+								</button>
+							</li>
+							<li>
+								<button
+									className={
+										activeSection === 'wiring'
+											? styles.active
+											: ''
+									}
+									onClick={() => setActiveSection('wiring')}>
+									<span className={styles.icon}>🔌</span>
+									Wiring
+								</button>
+							</li>
+						</ul>
+					</div>
+					<div className={styles.navGroup}>
+						<div className={styles.groupHeader}>Tag Management</div>
+						<ul>
+							<li>
+								<button
+									className={
+										activeSection === 'tags'
+											? styles.active
+											: ''
+									}
+									onClick={() => setActiveSection('tags')}>
+									<span className={styles.icon}>🏷️</span>
+									Tags
+								</button>
+							</li>
+						</ul>
+					</div>
 				</nav>
 
 				<div className={styles.content}>
@@ -162,6 +189,7 @@ export default function AdminPage() {
 						<AdminNotificationSettings />
 					)}
 					{activeSection === 'wiring' && <WiringManager />}
+					{activeSection === 'tags' && <TagManager />}
 				</div>
 			</div>
 		</div>
