@@ -600,32 +600,54 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 		const unviewedOnly = req.query.unviewedOnly === 'true'
 
 		// Get user notifications that have show_in_feed = true and hidden = false
+		// Note: If notification is deleted, we'll still show user_notification if it has content
 		const userNotifications = await prisma.userNotification.findMany({
 			where: {
 				user_id: req.user.id,
 				hidden: false, // Filter out hidden notifications
 				...(unviewedOnly && { viewed: false }),
-				notification: {
-					show_in_feed: true,
-				},
 			},
 			include: {
-				notification: true,
+				notification: true, // Will be null if notification deleted
 			},
 			orderBy: {
 				created_at: 'desc', // Use UserNotification.created_at
 			},
-			take: limit,
+			take: limit * 2, // Get more to account for filtering
 		})
+
+		// Filter to only include notifications that should appear in feed
+		// (show_in_feed = true OR notification was deleted but has content)
+		const filteredNotifications = userNotifications
+			.filter(un => {
+				// If notification is deleted (null), include if it has stored content
+				if (!un.notification) {
+					return un.content !== null && un.content !== ''
+				}
+				// If notification exists, check show_in_feed flag
+				return un.notification.show_in_feed === true
+			})
+			.slice(0, limit) // Limit after filtering
 
 		// Get tags for each notification and user notification
 		const notificationsWithTags = await Promise.all(
-			userNotifications.map(async un => {
-				// Get tags for the notification template
-				const notificationTags = await tagService.getEntityTags(
-					'notification',
-					un.notification_id
-				)
+			filteredNotifications.map(async un => {
+				// Get tags for the notification template (only if notification exists)
+				let notificationTags: any[] = []
+				if (un.notification_id) {
+					try {
+						notificationTags = await tagService.getEntityTags(
+							'notification',
+							un.notification_id
+						)
+					} catch (error) {
+						// Notification might be deleted, skip tags
+						console.warn(
+							`Failed to get tags for deleted notification ${un.notification_id}:`,
+							error
+						)
+					}
+				}
 
 				// Get tags for the user notification (including inherited)
 				const userNotificationTags = await tagService.getEntityTags(
@@ -639,38 +661,51 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 						? userNotificationTags
 						: notificationTags
 
-				// Render message template if available
-				let renderedMessage =
-					un.notification.message_template || un.notification.name
-				if (
-					un.notification.message_template &&
-					un.notification.variable_schema
-				) {
-					try {
-						// Generate fake data from schema to render template
-						const fakeData = generateFakeDataFromSchema(
-							un.notification.variable_schema
-						)
-						renderedMessage = TemplateService.render(
-							un.notification.message_template,
-							fakeData
-						)
-					} catch (error) {
-						console.error(
-							`Failed to render template for notification ${un.notification_id}:`,
-							error
-						)
-						// Keep original template if rendering fails
+				// ALWAYS use stored content first (allows viewing even if notification is deleted)
+				// This is the primary source of truth for what the user should see
+				let renderedMessage = un.content
+
+				// Only fall back to rendering from template if:
+				// 1. Content is not stored (old records)
+				// 2. Notification template still exists
+				if (!renderedMessage && un.notification) {
+					// Fall back to rendering from template if content not stored
+					renderedMessage =
+						un.notification.message_template || un.notification.name
+					if (
+						un.notification.message_template &&
+						un.notification.variable_schema
+					) {
+						try {
+							// Generate fake data from schema to render template
+							const fakeData = generateFakeDataFromSchema(
+								un.notification.variable_schema
+							)
+							renderedMessage = TemplateService.render(
+								un.notification.message_template,
+								fakeData
+							)
+						} catch (error) {
+							console.error(
+								`Failed to render template for notification ${un.notification_id}:`,
+								error
+							)
+							// Keep original template if rendering fails
+						}
 					}
+				} else if (!renderedMessage) {
+					// Notification was deleted and no content stored, use a fallback message
+					renderedMessage = 'Notification content unavailable'
 				}
 
 				return {
 					id: un.id, // Use UserNotification ID for feed
-					notification_id: un.notification.id,
-					name: un.notification.name,
-					message: renderedMessage, // Rendered message
-					message_template: un.notification.message_template, // Keep template for reference
-					notification_type: un.notification.notification_type,
+					notification_id: un.notification?.id || null,
+					name: un.notification?.name || 'Notification',
+					message: renderedMessage, // Use stored content or rendered message
+					message_template: un.notification?.message_template || null, // Keep template for reference if available
+					notification_type:
+						un.notification?.notification_type || 'default',
 					viewed: un.viewed,
 					viewed_at: un.viewed_at,
 					created_at: un.created_at, // Use UserNotification.created_at
@@ -732,22 +767,32 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 router.post('/:notificationId/view', requireAuth, async (req, res) => {
 	try {
 		const prisma = req.prisma
-		const notificationService = new NotificationService(prisma)
 
 		if (!req.user) {
 			return res.status(401).json({ error: 'Authentication required' })
 		}
 
-		const notificationId = parseInt(req.params.notificationId, 10)
+		// notificationId here is actually the UserNotification.id (from feed)
+		const userNotificationId = parseInt(req.params.notificationId, 10)
 
-		if (isNaN(notificationId)) {
+		if (isNaN(userNotificationId)) {
 			return res.status(400).json({ error: 'Invalid notification ID' })
 		}
 
-		const result = await notificationService.markAsViewedByUser(
-			notificationId,
-			req.user.id
-		)
+		// Update the UserNotification directly by its ID
+		const result = await prisma.userNotification.update({
+			where: {
+				id: userNotificationId,
+				user_id: req.user.id, // Ensure user owns this notification
+			},
+			data: {
+				viewed: true,
+				viewed_at: new Date(),
+			},
+			include: {
+				notification: true,
+			},
+		})
 
 		res.json(result)
 	} catch (error: any) {
@@ -855,7 +900,8 @@ router.patch('/user/me/:notificationId/hide', requireAuth, async (req, res) => {
 			return res.status(400).json({ error: 'Invalid notification ID' })
 		}
 
-		// Update UserNotification to set hidden = true
+		// Update UserNotification to set hidden = true and viewed = true
+		// If a notification is hidden, it should also be marked as viewed to prevent it from being counted as unread
 		const userNotification = await prisma.userNotification.update({
 			where: {
 				id: notificationId,
@@ -863,6 +909,8 @@ router.patch('/user/me/:notificationId/hide', requireAuth, async (req, res) => {
 			},
 			data: {
 				hidden: true,
+				viewed: true, // Mark as viewed when hiding
+				viewed_at: new Date(), // Set viewed_at timestamp
 			},
 			include: {
 				notification: true,

@@ -434,17 +434,33 @@ export class NotificationService {
 
 	/**
 	 * Mark notification as viewed by user
+	 * @deprecated Use direct UserNotification.id update instead
+	 * This method is kept for backward compatibility but may not work correctly
+	 * if multiple user_notifications exist for the same notification_id
 	 */
 	async markAsViewedByUser(
 		notificationId: number,
 		userId: string
 	): Promise<any> {
+		// Find the most recent unviewed user_notification for this notification_id and user
+		const userNotification = await this.prisma.userNotification.findFirst({
+			where: {
+				user_id: userId,
+				notification_id: notificationId,
+				viewed: false,
+			},
+			orderBy: {
+				created_at: 'desc',
+			},
+		})
+
+		if (!userNotification) {
+			throw new Error('Notification not found for user')
+		}
+
 		return this.prisma.userNotification.update({
 			where: {
-				user_notification_unique: {
-					user_id: userId,
-					notification_id: notificationId,
-				},
+				id: userNotification.id,
 			},
 			data: {
 				viewed: true,
@@ -474,12 +490,17 @@ export class NotificationService {
 
 	/**
 	 * Get unviewed notification count for a user
+	 * Only counts notifications that should appear in the feed (hidden = false, show_in_feed = true)
 	 */
 	async getUnviewedCountForUser(userId: string): Promise<number> {
 		return this.prisma.userNotification.count({
 			where: {
 				user_id: userId,
 				viewed: false,
+				hidden: false, // Only count non-hidden notifications
+				notification: {
+					show_in_feed: true, // Only count notifications that should appear in feed
+				},
 			},
 		})
 	}
@@ -525,23 +546,123 @@ export class NotificationService {
 			userIds = users.map(u => u.id)
 		}
 
+		// Get the full notification record to access template and schema
+		const fullNotification = await this.prisma.notification.findUnique({
+			where: { id: notification.id },
+		})
+
+		if (!fullNotification) {
+			console.error(`Notification ${notification.id} not found`)
+			return
+		}
+
+		// Render the message template to store in content field
+		// This allows viewing the notification even if the template is deleted later
+		let renderedContent: string | null = null
+		if (fullNotification.message_template) {
+			if (fullNotification.variable_schema) {
+				// Generate fake data from schema to render template
+				try {
+					const fakeData = generateFakeDataFromSchema(
+						fullNotification.variable_schema
+					)
+					// Ensure timestamp is always a Date object if it exists
+					// This is needed for proper formatting with custom formats
+					// Also handle nested timestamps (e.g., device.timestamp)
+					const visited = new WeakSet()
+					const ensureTimestampIsDate = (obj: any): void => {
+						if (
+							!obj ||
+							typeof obj !== 'object' ||
+							Array.isArray(obj) ||
+							obj instanceof Date
+						) {
+							return
+						}
+
+						// Prevent circular reference infinite recursion
+						if (visited.has(obj)) {
+							return
+						}
+						visited.add(obj)
+
+						// Check top-level timestamp
+						if ('timestamp' in obj) {
+							if (typeof obj.timestamp === 'string') {
+								obj.timestamp = new Date(obj.timestamp)
+							} else if (!(obj.timestamp instanceof Date)) {
+								obj.timestamp = new Date()
+							}
+						} else {
+							// Add timestamp if it doesn't exist (common case)
+							obj.timestamp = new Date()
+						}
+
+						// Recursively check nested objects
+						for (const key in obj) {
+							if (
+								obj.hasOwnProperty(key) &&
+								typeof obj[key] === 'object' &&
+								obj[key] !== null &&
+								!Array.isArray(obj[key]) &&
+								!(obj[key] instanceof Date)
+							) {
+								ensureTimestampIsDate(obj[key])
+							}
+						}
+					}
+
+					if (
+						fakeData &&
+						typeof fakeData === 'object' &&
+						!Array.isArray(fakeData)
+					) {
+						ensureTimestampIsDate(fakeData)
+					}
+
+					renderedContent = TemplateService.render(
+						fullNotification.message_template,
+						fakeData
+					)
+				} catch (error) {
+					console.error(
+						`Failed to render template for notification ${notification.id}:`,
+						error
+					)
+					// Fall back to template as-is if rendering fails
+					renderedContent = fullNotification.message_template
+				}
+			} else {
+				// No variable schema, use template as-is
+				renderedContent = fullNotification.message_template
+			}
+		} else {
+			// No template, use notification name
+			renderedContent = fullNotification.name
+		}
+
 		// Link notification to users
 		for (const userId of userIds) {
 			try {
-				await this.prisma.userNotification.upsert({
+				// Check if user_notification already exists to avoid duplicates
+				const existing = await this.prisma.userNotification.findFirst({
 					where: {
-						user_notification_unique: {
-							user_id: userId,
-							notification_id: notification.id,
-						},
-					},
-					create: {
 						user_id: userId,
 						notification_id: notification.id,
-						viewed: false,
 					},
-					update: {},
 				})
+
+				if (!existing) {
+					// Only create if it doesn't exist
+					await this.prisma.userNotification.create({
+						data: {
+							user_id: userId,
+							notification_id: notification.id,
+							viewed: false,
+							content: renderedContent, // Store rendered content
+						},
+					})
+				}
 			} catch (error: any) {
 				// Log but don't fail if there's an issue
 				console.error(
@@ -554,7 +675,8 @@ export class NotificationService {
 
 	/**
 	 * Create a test notification for a specific user with fake data
-	 * Creates a NEW Notification record (not just UserNotification) for testing
+	 * Creates a UserNotification entry using the existing notification template
+	 * Does NOT create a new Notification record - uses the existing one
 	 * Used for testing notifications without actually triggering them
 	 */
 	async createTestNotificationForUser(
@@ -564,7 +686,7 @@ export class NotificationService {
 	): Promise<any> {
 		const tagService = new TagService(this.prisma)
 
-		// Get the notification template
+		// Get the notification template (use existing, don't create new)
 		const templateNotification = await this.prisma.notification.findUnique({
 			where: { id: notificationId },
 		})
@@ -579,10 +701,63 @@ export class NotificationService {
 
 		// Generate fake data if not provided
 		let testData = fakeData
+		// Helper to ensure timestamps are Date objects
+		// Use WeakSet to track visited objects and prevent circular reference infinite recursion
+		const visited = new WeakSet()
+		const ensureTimestampIsDate = (obj: any): void => {
+			if (
+				!obj ||
+				typeof obj !== 'object' ||
+				Array.isArray(obj) ||
+				obj instanceof Date
+			) {
+				return
+			}
+
+			// Prevent circular reference infinite recursion
+			if (visited.has(obj)) {
+				return
+			}
+			visited.add(obj)
+
+			// Check top-level timestamp
+			if ('timestamp' in obj) {
+				if (typeof obj.timestamp === 'string') {
+					obj.timestamp = new Date(obj.timestamp)
+				} else if (!(obj.timestamp instanceof Date)) {
+					obj.timestamp = new Date()
+				}
+			} else {
+				// Add timestamp if it doesn't exist (common case)
+				obj.timestamp = new Date()
+			}
+
+			// Recursively check nested objects
+			for (const key in obj) {
+				if (
+					obj.hasOwnProperty(key) &&
+					typeof obj[key] === 'object' &&
+					obj[key] !== null &&
+					!Array.isArray(obj[key]) &&
+					!(obj[key] instanceof Date)
+				) {
+					ensureTimestampIsDate(obj[key])
+				}
+			}
+		}
+
 		if (!testData && templateNotification.variable_schema) {
 			testData = generateFakeDataFromSchema(
 				templateNotification.variable_schema
 			)
+			// Ensure timestamp is always a Date object if it exists
+			if (
+				testData &&
+				typeof testData === 'object' &&
+				!Array.isArray(testData)
+			) {
+				ensureTimestampIsDate(testData)
+			}
 		} else if (!testData) {
 			// Default fake data
 			testData = {
@@ -599,6 +774,13 @@ export class NotificationService {
 					name: 'Test User',
 				},
 			}
+		} else if (
+			testData &&
+			typeof testData === 'object' &&
+			!Array.isArray(testData)
+		) {
+			// Ensure timestamp is a Date object even if provided in fakeData
+			ensureTimestampIsDate(testData)
 		}
 
 		// Render message template if available
@@ -611,48 +793,15 @@ export class NotificationService {
 			)
 		}
 
-    // Create a NEW Notification record for the test
-    const testNotification = await this.prisma.notification.create({
-      data: {
-        name: `${templateNotification.name} (Test)`,
-        description: `Test notification created from ${templateNotification.name}`,
-        enabled: true,
-        notification_type: templateNotification.notification_type,
-        target_users: [userId] as any, // Only target the test user
-        message_template: templateNotification.message_template,
-        priority: templateNotification.priority,
-        variable_schema: templateNotification.variable_schema as any,
-        show_in_feed: templateNotification.show_in_feed ?? true,
-        show_popup: templateNotification.show_popup ?? false,
-      },
-    })
-
-		// Get or create 'test' tag
-		const testTag = await tagService.getOrCreateTag('test')
-
-		// Associate 'test' tag with the new notification
-		await tagService.associateTag(
-			'notification',
-			testNotification.id,
-			testTag.id,
-			false
-		)
-
-		// Inherit tags from template notification
-		await tagService.inheritTags(
-			'notification',
-			notificationId, // Source: template notification
-			'notification',
-			testNotification.id // Target: new test notification
-		)
-
-		// Create UserNotification record for the test user
+		// Create a NEW UserNotification record for each test
+		// This allows multiple test notifications to be created
 		const userNotification = await this.prisma.userNotification.create({
 			data: {
 				user_id: userId,
-				notification_id: testNotification.id,
+				notification_id: notificationId, // Use existing notification template
 				viewed: false,
 				hidden: false,
+				content: renderedMessage, // Store the rendered message content
 			},
 			include: {
 				notification: true,
@@ -660,12 +809,23 @@ export class NotificationService {
 			},
 		})
 
-		// Inherit tags from notification to user notification
+		// Get or create 'test' tag
+		const testTag = await tagService.getOrCreateTag('test')
+
+		// Associate 'test' tag with the user notification (not the notification template)
+		await tagService.associateTag(
+			'user_notification',
+			userNotification.id,
+			testTag.id,
+			false
+		)
+
+		// Inherit tags from notification template to user notification
 		await tagService.inheritTags(
 			'notification',
-			testNotification.id,
+			notificationId, // Source: template notification
 			'user_notification',
-			userNotification.id
+			userNotification.id // Target: user notification
 		)
 
 		// Get all tags for the user notification

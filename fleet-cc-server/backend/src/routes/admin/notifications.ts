@@ -322,9 +322,9 @@ router.post('/:id/test', async (req, res) => {
 		// Create test notification for current user only
 		const testNotification =
 			await notificationService.createTestNotificationForUser(
-				userId,
-				notificationId
-			)
+			userId,
+			notificationId
+		)
 
 		// Broadcast notification via WebSocket to the user
 		try {

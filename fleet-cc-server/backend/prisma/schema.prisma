@@ -207,11 +207,12 @@ model UserNotification {
   viewed              Boolean         @default(false)
   viewed_at           DateTime?
   hidden              Boolean         @default(false)
+  content             String?         @db.Text // Rendered message content (stored when notification is created)
   created_at          DateTime        @default(now())
 
   // Note: tag_associations are queried via entity_type='user_notification' and entity_id
+  // Note: Removed unique constraint on (user_id, notification_id) to allow multiple test notifications
 
-  @@unique([user_id, notification_id], name: "user_notification_unique")
   @@index([user_id])
   @@index([notification_id])
   @@index([viewed])
