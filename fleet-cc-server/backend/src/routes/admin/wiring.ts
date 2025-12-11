@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { WiringService } from '../../services/wiring'
 import { TriggerService } from '../../services/trigger'
 import { EventService } from '../../services/event'
+import { NotificationService } from '../../services/notification'
+import { WiringExecutorService } from '../../services/wiringExecutor'
 import { requireAuth } from '../../middleware/auth'
 import { requireAdmin } from '../../middleware/authorize'
 
@@ -257,6 +259,66 @@ router.get('/commands/list', async (req, res) => {
 	} catch (error: any) {
 		console.error('Get commands list error:', error)
 		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * POST /api/admin/wiring/:workspaceId/triggers/:triggerId/test
+ * Test a trigger by executing it with fake data and processing connected events
+ */
+router.post('/:workspaceId/triggers/:triggerId/test', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const triggerService = new TriggerService(prisma)
+		const eventService = new EventService(prisma)
+		const wiringService = new WiringService(
+			prisma,
+			triggerService,
+			eventService
+		)
+		const notificationService = new NotificationService(prisma)
+		const executorService = new WiringExecutorService(
+			prisma,
+			wiringService,
+			triggerService,
+			eventService,
+			notificationService
+		)
+
+		const workspaceId = parseInt(req.params.workspaceId)
+		const triggerId = parseInt(req.params.triggerId)
+		const userId = req.user?.id
+
+		if (isNaN(workspaceId)) {
+			return res.status(400).json({ error: 'Invalid workspace ID' })
+		}
+
+		if (isNaN(triggerId)) {
+			return res.status(400).json({ error: 'Invalid trigger ID' })
+		}
+
+		if (!userId) {
+			return res.status(401).json({ error: 'User not authenticated' })
+		}
+
+		// Execute trigger with test data
+		const result = await executorService.executeTrigger(
+			workspaceId,
+			triggerId,
+			undefined, // Will generate from trigger schema
+			userId
+		)
+
+		res.json(result)
+	} catch (error: any) {
+		if (error.message?.includes('not found')) {
+			return res.status(404).json({ error: error.message })
+		}
+		if (error.message?.includes('disabled')) {
+			return res.status(400).json({ error: error.message })
+		}
+		console.error('Test trigger error:', error)
+		res.status(500).json({ error: error.message || 'Internal server error' })
 	}
 })
 

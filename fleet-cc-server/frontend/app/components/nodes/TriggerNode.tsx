@@ -34,7 +34,7 @@ export default function TriggerNode({ data, workspaceId }: TriggerNodeProps) {
 
 	const handleTest = async (e: React.MouseEvent) => {
 		e.stopPropagation()
-		
+
 		if (!workspaceId) {
 			setTestResult('Please select a workspace first')
 			setTimeout(() => setTestResult(null), 3000)
@@ -64,9 +64,9 @@ export default function TriggerNode({ data, workspaceId }: TriggerNodeProps) {
 
 			if (response.ok) {
 				const result = await response.json()
-				const successCount = result.executedEvents?.filter(
-					(e: any) => e.success
-				).length || 0
+				const successCount =
+					result.executedEvents?.filter((e: any) => e.success)
+						.length || 0
 				const totalCount = result.executedEvents?.length || 0
 				setTestResult(
 					`Test: ${successCount}/${totalCount} actions executed`
@@ -101,15 +101,13 @@ export default function TriggerNode({ data, workspaceId }: TriggerNodeProps) {
 						disabled={testing}
 						className={styles.testButton}
 						title="Test this trigger node's connections"
-						type="button">
+						type='button'>
 						{testing ? '...' : 'Test'}
 					</button>
 				)}
 			</div>
 			{testResult && (
-				<div className={styles.testResult}>
-					{testResult}
-				</div>
+				<div className={styles.testResult}>{testResult}</div>
 			)}
 			{data.description && (
 				<div className={styles.description}>{data.description}</div>
