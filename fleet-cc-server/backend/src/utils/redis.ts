@@ -35,7 +35,7 @@ export async function checkRedisAvailability(
 				retryStrategy: () => null, // Don't retry on connection failure
 				lazyConnect: true,
 				connectTimeout: 2000,
-				reconnectOnError: false,
+				reconnectOnError: () => false,
 			})
 
 			// Try to connect
@@ -84,7 +84,7 @@ export function createRedisConnection(redisUrl: string): Redis {
 		maxRetriesPerRequest: null,
 		retryStrategy: () => null, // Disable automatic retries
 		lazyConnect: true, // Don't connect immediately
-		reconnectOnError: false,
+		reconnectOnError: () => false,
 	})
 
 	// Suppress unhandled error events to reduce log noise

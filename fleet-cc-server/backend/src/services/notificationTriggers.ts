@@ -177,9 +177,7 @@ export class NotificationTriggerService {
 	): Promise<any> {
 		const trigger = await this.prisma.notificationTrigger.findUnique({
 			where: { id: triggerId },
-			include: {
-				rule: true,
-			},
+			// Note: rule relation removed - notification_rules table deprecated
 		})
 
 		if (!trigger) {
@@ -300,9 +298,7 @@ export class NotificationTriggerService {
 
 		return this.prisma.notificationTrigger.findMany({
 			where,
-			include: {
-				rule: true,
-			},
+			// Note: rule relation removed - notification_rules table deprecated
 			orderBy: {
 				scheduled_at: 'asc',
 			},

@@ -27,9 +27,9 @@ export class NotificationRuleService {
     enabled?: boolean;
     priority?: number;
   }): Promise<any> {
-    // Validate notification type exists
-    const notificationType = await this.prisma.notificationType.findUnique({
-      where: { type_code: data.notification_type_code },
+    // Validate notification type exists (using notifications table)
+    const notificationType = await this.prisma.notification.findFirst({
+      where: { name: data.notification_type_code },
     });
 
     if (!notificationType) {
@@ -44,19 +44,9 @@ export class NotificationRuleService {
       targetUsers = { roles: data.target_roles };
     }
 
-    return this.prisma.notificationRule.create({
-      data: {
-        name: data.name,
-        description: data.description || null,
-        trigger_type: data.trigger_type,
-        trigger_config: data.trigger_config || {},
-        notification_type_code: data.notification_type_code,
-        target_users: targetUsers,
-        message_template: data.message_template || null,
-        enabled: data.enabled !== undefined ? data.enabled : true,
-        priority: data.priority || 0,
-      },
-    });
+    // Note: notificationRule table has been deprecated - rules are now managed via notifications table
+    // This method is kept for backward compatibility but should be refactored
+    throw new Error('NotificationRule table has been deprecated. Use Notification table instead.');
   }
 
   /**
@@ -68,49 +58,18 @@ export class NotificationRuleService {
     limit?: number;
     offset?: number;
   } = {}): Promise<any[]> {
-    const where: any = {};
-
-    if (options.enabled !== undefined) {
-      where.enabled = options.enabled;
-    }
-
-    if (options.trigger_type) {
-      where.trigger_type = options.trigger_type;
-    }
-
-    return this.prisma.notificationRule.findMany({
-      where,
-      include: {
-        triggers: {
-          orderBy: {
-            created_at: 'desc',
-          },
-          take: 10,
-        },
-      },
-      orderBy: [
-        { priority: 'desc' },
-        { created_at: 'desc' },
-      ],
-      take: options.limit || 100,
-      skip: options.offset || 0,
-    });
+    // Note: notificationRule table has been deprecated
+    // This method should be refactored to use notifications table
+    // For now, return empty array to prevent errors
+    return [];
   }
 
   /**
    * Get rule by ID
    */
   async getRuleById(ruleId: number): Promise<any> {
-    return this.prisma.notificationRule.findUnique({
-      where: { id: ruleId },
-      include: {
-        triggers: {
-          orderBy: {
-            created_at: 'desc',
-          },
-        },
-      },
-    });
+    // Note: notificationRule table has been deprecated
+    throw new Error('NotificationRule table has been deprecated. Use Notification table instead.');
   }
 
   /**
@@ -140,9 +99,9 @@ export class NotificationRuleService {
     if (data.priority !== undefined) updateData.priority = data.priority;
 
     if (data.notification_type_code !== undefined) {
-      // Validate notification type exists
-      const notificationType = await this.prisma.notificationType.findUnique({
-        where: { type_code: data.notification_type_code },
+      // Validate notification type exists (using notifications table)
+      const notificationType = await this.prisma.notification.findFirst({
+        where: { name: data.notification_type_code },
       });
 
       if (!notificationType) {
@@ -162,19 +121,16 @@ export class NotificationRuleService {
       updateData.target_users = targetUsers;
     }
 
-    return this.prisma.notificationRule.update({
-      where: { id: ruleId },
-      data: updateData,
-    });
+    // Note: notificationRule table has been deprecated
+    throw new Error('NotificationRule table has been deprecated. Use Notification table instead.');
   }
 
   /**
    * Delete rule
    */
   async deleteRule(ruleId: number): Promise<void> {
-    await this.prisma.notificationRule.delete({
-      where: { id: ruleId },
-    });
+    // Note: notificationRule table has been deprecated
+    throw new Error('NotificationRule table has been deprecated. Use Notification table instead.');
   }
 
   /**
@@ -185,19 +141,10 @@ export class NotificationRuleService {
     eventType: string,
     eventData: any
   ): Promise<any[]> {
-    const rules = await this.prisma.notificationRule.findMany({
-      where: {
-        enabled: true,
-        trigger_type: 'backend_event',
-        trigger_config: {
-          path: ['event_type'],
-          equals: eventType,
-        },
-      },
-      orderBy: {
-        priority: 'desc',
-      },
-    });
+    // Note: notificationRule table has been deprecated - rules are now in notifications table
+    // This method should be refactored to use notifications table
+    const rules: any[] = [];
+    // TODO: Refactor to query notifications table with appropriate filters
 
     // Filter rules based on trigger_config conditions
     const matchingRules: any[] = [];

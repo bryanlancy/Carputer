@@ -36,7 +36,7 @@ export class WorkspaceService {
 	 */
 	async createWorkspace(data: {
 		name: string
-		description?: string
+		description?: string | null
 	}): Promise<any> {
 		// Validate name is not empty
 		if (!data.name || data.name.trim().length === 0) {
@@ -58,7 +58,7 @@ export class WorkspaceService {
 		workspaceId: number,
 		data: {
 			name?: string
-			description?: string
+			description?: string | null
 		}
 	): Promise<any> {
 		// Validate workspace exists
