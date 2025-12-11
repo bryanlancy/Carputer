@@ -471,6 +471,7 @@ export default function WiringManager() {
 					<div className={styles.wiringContainer}>
 						<TriggerSidebar
 							triggers={triggers}
+							workspaceId={selectedWorkspaceId}
 							onDragStart={(trigger, event) => {
 								// Store trigger data in drag event
 								event.dataTransfer.setData(
@@ -505,6 +506,7 @@ export default function WiringManager() {
 								nodesRef={nodesRef}
 								edgesRef={edgesRef}
 								onValidationChange={setHasInvalidConnections}
+								workspaceId={selectedWorkspaceId}
 							/>
 						</div>
 						<ActionSidebar

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useEffect } from 'react'
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react'
 import ReactFlow, {
 	Node,
 	Edge,
@@ -62,14 +62,14 @@ export interface WiringCanvasProps {
 	nodesRef?: React.MutableRefObject<Node[] | null>
 	edgesRef?: React.MutableRefObject<Edge[] | null>
 	onValidationChange?: (hasInvalidConnections: boolean) => void
+	workspaceId?: number | null
 }
 
-// Define nodeTypes outside component to avoid React Flow warning
-// This must be a stable reference that doesn't change between renders
-const nodeTypes = {
-	trigger: TriggerNode,
+// Create nodeTypes factory to pass workspaceId to nodes
+const createNodeTypes = (workspaceId?: number | null) => ({
+	trigger: (props: NodeProps) => <TriggerNode {...props} workspaceId={workspaceId} />,
 	event: EventNode,
-}
+})
 
 // Define edgeTypes outside component
 const edgeTypes = {
@@ -88,11 +88,18 @@ export default function WiringCanvas({
 	nodesRef,
 	edgesRef,
 	onValidationChange,
+	workspaceId,
 }: WiringCanvasProps) {
 	const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes)
 	const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges)
 	// Use internal ref to track latest nodes for validation (separate from prop nodesRef)
 	const internalNodesRef = useRef(nodes)
+
+	// Create nodeTypes with workspaceId - use useMemo to keep reference stable
+	const nodeTypes = useMemo(() => ({
+		trigger: (props: NodeProps<TriggerNodeData>) => <TriggerNode {...props} workspaceId={workspaceId} />,
+		event: EventNode,
+	}), [workspaceId])
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
