@@ -1,9 +1,9 @@
 import express from 'express'
 import { z } from 'zod'
 import { NotificationService } from '../../services/notification'
-import { NotificationRuleService } from '../../services/notificationRules'
 import { requireAuth } from '../../middleware/auth'
 import { requireAdmin } from '../../middleware/authorize'
+import { broadcastNotificationToUser } from '../realtime'
 
 const router = express.Router()
 
@@ -164,11 +164,15 @@ const createTypeSchema = z.object({
 	name: z.string().min(1),
 	description: z.string().optional().nullable(),
 	enabled: z.boolean().default(true),
-	notification_type: z.enum(['warning', 'alert', 'default', 'success']).default('default'),
+	notification_type: z
+		.enum(['warning', 'alert', 'default', 'success'])
+		.default('default'),
 	target_users: z.any().optional().nullable(),
 	message_template: z.string().optional().nullable(),
 	priority: z.number().default(0),
 	variable_schema: z.any().optional().nullable(),
+	show_in_feed: z.boolean().default(true),
+	show_popup: z.boolean().default(false),
 })
 
 router.post('/', async (req, res) => {
@@ -189,6 +193,8 @@ router.post('/', async (req, res) => {
 				message_template: data.message_template ?? null,
 				priority: data.priority ?? 0,
 				variable_schema: data.variable_schema ?? null,
+				show_in_feed: data.show_in_feed ?? true,
+				show_popup: data.show_popup ?? false,
 			},
 		})
 
@@ -260,15 +266,119 @@ router.post('/', async (req, res) => {
  *       500:
  *         description: Internal server error
  */
+/**
+ * @swagger
+ * /api/admin/notifications/{id}/test:
+ *   post:
+ *     summary: Test notification (admin)
+ *     description: Creates a test notification for the current user with fake data. The notification will appear in the user's feed.
+ *     tags: [Admin Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Test notification created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 notification:
+ *                   type: object
+ *                 rendered_message:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Notification not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/:id/test', async (req, res) => {
+	try {
+		const prisma = req.prisma
+		const notificationService = new NotificationService(prisma)
+		const { id } = req.params
+		const userId = req.user?.id
+
+		if (!userId) {
+			return res.status(401).json({ error: 'User not authenticated' })
+		}
+
+		const notificationId = parseInt(id)
+		if (isNaN(notificationId)) {
+			return res.status(400).json({ error: 'Invalid notification ID' })
+		}
+
+		// Create test notification for current user only
+		const testNotification =
+			await notificationService.createTestNotificationForUser(
+				userId,
+				notificationId
+			)
+
+		// Broadcast notification via WebSocket to the user
+		try {
+			broadcastNotificationToUser(userId, {
+				type: 'notification',
+				notification: {
+					id: testNotification.id,
+					notification_id: testNotification.notification_id,
+					name: testNotification.notification.name,
+					message: testNotification.rendered_message,
+					notification_type:
+						testNotification.notification.notification_type,
+					viewed: testNotification.viewed,
+					viewed_at: testNotification.viewed_at,
+					created_at: testNotification.created_at,
+					tags: testNotification.tags,
+					show_popup: testNotification.notification.show_popup,
+				},
+				timestamp: new Date().toISOString(),
+			})
+		} catch (wsError) {
+			// Log but don't fail the request if WebSocket broadcast fails
+			console.error(
+				'Failed to broadcast test notification via WebSocket:',
+				wsError
+			)
+		}
+
+		res.json(testNotification)
+	} catch (error: any) {
+		if (error.message?.includes('not found')) {
+			return res.status(404).json({ error: error.message })
+		}
+		if (error.message?.includes('disabled')) {
+			return res.status(400).json({ error: error.message })
+		}
+		console.error('Test notification error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
 const updateTypeSchema = z.object({
 	name: z.string().min(1).optional(),
 	description: z.string().optional().nullable(),
 	enabled: z.boolean().optional(),
-	notification_type: z.enum(['warning', 'alert', 'default', 'success']).optional(),
+	notification_type: z
+		.enum(['warning', 'alert', 'default', 'success'])
+		.optional(),
 	target_users: z.any().optional().nullable(),
 	message_template: z.string().optional().nullable(),
 	priority: z.number().optional(),
 	variable_schema: z.any().optional().nullable(),
+	show_in_feed: z.boolean().optional(),
+	show_popup: z.boolean().optional(),
 })
 
 router.put('/:id', async (req, res) => {
@@ -308,6 +418,12 @@ router.put('/:id', async (req, res) => {
 				}),
 				...(data.variable_schema !== undefined && {
 					variable_schema: data.variable_schema ?? null,
+				}),
+				...(data.show_in_feed !== undefined && {
+					show_in_feed: data.show_in_feed,
+				}),
+				...(data.show_popup !== undefined && {
+					show_popup: data.show_popup,
 				}),
 			},
 		})

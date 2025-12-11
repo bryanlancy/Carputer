@@ -1,6 +1,9 @@
 import express from 'express'
 import { z } from 'zod'
 import { NotificationService } from '../services/notification'
+import { TagService } from '../services/tagService'
+import { TemplateService } from '../services/template'
+import { generateFakeDataFromSchema } from '../utils/fakeDataGenerator'
 import { optionalAuth, requireAuth } from '../middleware/auth'
 
 const router = express.Router()
@@ -543,7 +546,9 @@ router.get('/user/me/unread-count', requireAuth, async (req, res) => {
 			return res.status(401).json({ error: 'Authentication required' })
 		}
 
-		const count = await notificationService.getUnviewedCountForUser(req.user.id)
+		const count = await notificationService.getUnviewedCountForUser(
+			req.user.id
+		)
 
 		res.json({ count })
 	} catch (error) {
@@ -583,7 +588,7 @@ router.get('/user/me/unread-count', requireAuth, async (req, res) => {
 router.get('/user/me/feed', requireAuth, async (req, res) => {
 	try {
 		const prisma = req.prisma
-		const notificationService = new NotificationService(prisma)
+		const tagService = new TagService(prisma)
 
 		if (!req.user) {
 			return res.status(401).json({ error: 'Authentication required' })
@@ -594,10 +599,11 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 			: 20
 		const unviewedOnly = req.query.unviewedOnly === 'true'
 
-		// Get user notifications that have show_in_feed = true
+		// Get user notifications that have show_in_feed = true and hidden = false
 		const userNotifications = await prisma.userNotification.findMany({
 			where: {
 				user_id: req.user.id,
+				hidden: false, // Filter out hidden notifications
 				...(unviewedOnly && { viewed: false }),
 				notification: {
 					show_in_feed: true,
@@ -607,23 +613,80 @@ router.get('/user/me/feed', requireAuth, async (req, res) => {
 				notification: true,
 			},
 			orderBy: {
-				created_at: 'desc',
+				created_at: 'desc', // Use UserNotification.created_at
 			},
 			take: limit,
 		})
 
-		// Format response - notifications table now stores templates
-		const notifications = userNotifications.map((un) => ({
-			id: un.notification.id,
-			name: un.notification.name,
-			message_template: un.notification.message_template,
-			notification_type: un.notification.notification_type,
-			viewed: un.viewed,
-			viewed_at: un.viewed_at,
-			created_at: un.notification.created_at,
-		}))
+		// Get tags for each notification and user notification
+		const notificationsWithTags = await Promise.all(
+			userNotifications.map(async un => {
+				// Get tags for the notification template
+				const notificationTags = await tagService.getEntityTags(
+					'notification',
+					un.notification_id
+				)
 
-		const jsonString = JSON.stringify(notifications, (key, value) =>
+				// Get tags for the user notification (including inherited)
+				const userNotificationTags = await tagService.getEntityTags(
+					'user_notification',
+					un.id
+				)
+
+				// Combine tags (user notification tags take precedence for display)
+				const allTags =
+					userNotificationTags.length > 0
+						? userNotificationTags
+						: notificationTags
+
+				// Render message template if available
+				let renderedMessage =
+					un.notification.message_template || un.notification.name
+				if (
+					un.notification.message_template &&
+					un.notification.variable_schema
+				) {
+					try {
+						// Generate fake data from schema to render template
+						const fakeData = generateFakeDataFromSchema(
+							un.notification.variable_schema
+						)
+						renderedMessage = TemplateService.render(
+							un.notification.message_template,
+							fakeData
+						)
+					} catch (error) {
+						console.error(
+							`Failed to render template for notification ${un.notification_id}:`,
+							error
+						)
+						// Keep original template if rendering fails
+					}
+				}
+
+				return {
+					id: un.id, // Use UserNotification ID for feed
+					notification_id: un.notification.id,
+					name: un.notification.name,
+					message: renderedMessage, // Rendered message
+					message_template: un.notification.message_template, // Keep template for reference
+					notification_type: un.notification.notification_type,
+					viewed: un.viewed,
+					viewed_at: un.viewed_at,
+					created_at: un.created_at, // Use UserNotification.created_at
+					tags: allTags.map(tag => ({
+						id: tag.id,
+						name: tag.name,
+						color: tag.color,
+						category: tag.category,
+						inherited: tag.inherited,
+					})),
+					device: null, // Can be populated if needed
+				}
+			})
+		)
+
+		const jsonString = JSON.stringify(notificationsWithTags, (key, value) =>
 			typeof value === 'bigint' ? value.toString() : value
 		)
 
@@ -689,7 +752,9 @@ router.post('/:notificationId/view', requireAuth, async (req, res) => {
 		res.json(result)
 	} catch (error: any) {
 		if (error.code === 'P2025') {
-			return res.status(404).json({ error: 'Notification not found for user' })
+			return res
+				.status(404)
+				.json({ error: 'Notification not found for user' })
 		}
 		console.error('Mark notification as viewed error:', error)
 		res.status(500).json({ error: 'Internal server error' })
@@ -729,11 +794,92 @@ router.post('/user/me/view-all', requireAuth, async (req, res) => {
 			return res.status(401).json({ error: 'Authentication required' })
 		}
 
-		const result = await notificationService.markAllAsViewedByUser(req.user.id)
+		const result = await notificationService.markAllAsViewedByUser(
+			req.user.id
+		)
 
 		res.json(result)
 	} catch (error) {
 		console.error('Mark all notifications as viewed error:', error)
+		res.status(500).json({ error: 'Internal server error' })
+	}
+})
+
+/**
+ * @swagger
+ * /api/notifications/user/me/{notificationId}/hide:
+ *   patch:
+ *     summary: Hide notification from feed for current user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: UserNotification ID (not Notification ID)
+ *     responses:
+ *       200:
+ *         description: Notification hidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 hidden:
+ *                   type: boolean
+ *       400:
+ *         description: Invalid notification ID
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Notification not found for user
+ *       500:
+ *         description: Internal server error
+ */
+router.patch('/user/me/:notificationId/hide', requireAuth, async (req, res) => {
+	try {
+		const prisma = req.prisma
+
+		if (!req.user) {
+			return res.status(401).json({ error: 'Authentication required' })
+		}
+
+		const notificationId = parseInt(req.params.notificationId, 10)
+
+		if (isNaN(notificationId)) {
+			return res.status(400).json({ error: 'Invalid notification ID' })
+		}
+
+		// Update UserNotification to set hidden = true
+		const userNotification = await prisma.userNotification.update({
+			where: {
+				id: notificationId,
+				user_id: req.user.id, // Ensure user owns this notification
+			},
+			data: {
+				hidden: true,
+			},
+			include: {
+				notification: true,
+			},
+		})
+
+		res.json({
+			id: userNotification.id,
+			hidden: userNotification.hidden,
+		})
+	} catch (error: any) {
+		if (error.code === 'P2025') {
+			return res.status(404).json({
+				error: 'Notification not found for user',
+			})
+		}
+		console.error('Hide notification error:', error)
 		res.status(500).json({ error: 'Internal server error' })
 	}
 })
@@ -844,7 +990,7 @@ router.get('/user/me/preferences', requireAuth, async (req, res) => {
 		if (!res.headersSent) {
 			res.status(500).json({
 				error: 'Internal server error',
-				message: error?.message || 'Unknown error'
+				message: error?.message || 'Unknown error',
 			})
 		}
 	}
@@ -930,16 +1076,25 @@ router.put('/user/me/preferences', requireAuth, async (req, res) => {
 			create: {
 				user_id: req.user.id,
 				auto_read: data.auto_read || false,
-				enabled_notification_types: data.enabled_notification_types || undefined,
+				enabled_notification_types:
+					data.enabled_notification_types || undefined,
 				urgency_filters: data.urgency_filters || undefined,
 			},
 			update: {
-				...(data.auto_read !== undefined && { auto_read: data.auto_read }),
+				...(data.auto_read !== undefined && {
+					auto_read: data.auto_read,
+				}),
 				...(data.enabled_notification_types !== undefined && {
-					enabled_notification_types: data.enabled_notification_types !== null ? data.enabled_notification_types : undefined,
+					enabled_notification_types:
+						data.enabled_notification_types !== null
+							? data.enabled_notification_types
+							: undefined,
 				}),
 				...(data.urgency_filters !== undefined && {
-					urgency_filters: data.urgency_filters !== null ? data.urgency_filters : undefined,
+					urgency_filters:
+						data.urgency_filters !== null
+							? data.urgency_filters
+							: undefined,
 				}),
 			},
 		})
@@ -947,7 +1102,10 @@ router.put('/user/me/preferences', requireAuth, async (req, res) => {
 		res.json(preferences)
 	} catch (error: any) {
 		if (error instanceof z.ZodError) {
-			res.status(400).json({ error: 'Validation error', details: error.errors })
+			res.status(400).json({
+				error: 'Validation error',
+				details: error.errors,
+			})
 			return
 		}
 		console.error('Update user preferences error:', error)
@@ -956,4 +1114,3 @@ router.put('/user/me/preferences', requireAuth, async (req, res) => {
 })
 
 export default router
-
