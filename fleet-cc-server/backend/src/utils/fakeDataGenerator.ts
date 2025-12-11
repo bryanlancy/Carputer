@@ -32,6 +32,10 @@ export function generateFakeDataFromSchema(
 	}
 
 	if (type === 'string') {
+		// Check for date-time format - return Date object instead of string
+		if (schema.format === 'date-time' || schema.format === 'date') {
+			return new Date()
+		}
 		return generateString(schema, propertyName)
 	}
 
@@ -137,10 +141,7 @@ function generateString(schema: any, propertyName?: string): string {
 		return schema.enum[0]
 	}
 
-	// Check for format
-	if (schema.format === 'date-time' || schema.format === 'date') {
-		return new Date().toISOString()
-	}
+	// Check for format (date-time is handled at type level, so skip it here)
 	if (schema.format === 'email') {
 		return 'test@example.com'
 	}
@@ -208,7 +209,7 @@ function generateDefaultValue(propertyName?: string): any {
 
 	const lowerName = propertyName.toLowerCase()
 
-	// Timestamp-related
+	// Timestamp-related - always return Date object
 	if (
 		lowerName.includes('timestamp') ||
 		lowerName.includes('date') ||
@@ -298,4 +299,3 @@ export function generateFakeDataForPath(path: string): any {
 
 	return result
 }
-
