@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl, authenticatedFetch } from '../utils/api'
-import { extractDataTypes } from '../utils/dataTypeExtractor'
-import { DataTypeIcons } from '../utils/dataTypeIcons'
+import { useAuth } from '../../contexts/AuthContext'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
+import { extractDataTypes } from '../../utils/dataTypeExtractor'
+import { DataTypeIcons } from '../../utils/dataTypeIcons'
 import styles from './TriggerManager.module.scss'
 
 interface Trigger {
@@ -241,127 +241,129 @@ export default function TriggerManager() {
 							</div>
 						)}
 						<form onSubmit={handleSubmit} className={styles.form}>
-
-						<div className={styles.formGroup}>
-							<label>
-								Trigger Code *
-								<input
-									type='text'
-									value={formData.trigger_code}
-									onChange={e =>
-										setFormData({
-											...formData,
-											trigger_code: e.target.value,
-										})
-									}
-									required
-									disabled={!!editingTrigger}
-									placeholder='e.g., device.online'
-								/>
-								<small>
-									Unique identifier for this trigger (cannot
-									be changed after creation)
-								</small>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Trigger Name *
-								<input
-									type='text'
-									value={formData.trigger_name}
-									onChange={e =>
-										setFormData({
-											...formData,
-											trigger_name: e.target.value,
-										})
-									}
-									required
-									placeholder='e.g., Device Online'
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Description
-								<textarea
-									value={formData.description}
-									onChange={e =>
-										setFormData({
-											...formData,
-											description: e.target.value,
-										})
-									}
-									placeholder='Optional description of what this trigger does'
-									rows={3}
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Output Schema * (JSON)
-								<textarea
-									value={JSON.stringify(
-										formData.output_schema,
-										null,
-										2
-									)}
-									onChange={e => {
-										try {
-											const parsed = JSON.parse(
-												e.target.value
-											)
+							<div className={styles.formGroup}>
+								<label>
+									Trigger Code *
+									<input
+										type='text'
+										value={formData.trigger_code}
+										onChange={e =>
 											setFormData({
 												...formData,
-												output_schema: parsed,
+												trigger_code: e.target.value,
 											})
-										} catch (err) {
-											// Invalid JSON, keep the text for user to fix
 										}
-									}}
-									required
-									placeholder='{"type": "object", "properties": {...}, "required": [...]}'
-									rows={10}
-									className={styles.jsonInput}
-								/>
-								<small>
-									JSON Schema defining what data this trigger
-									emits
-								</small>
-							</label>
-						</div>
+										required
+										disabled={!!editingTrigger}
+										placeholder='e.g., device.online'
+									/>
+									<small>
+										Unique identifier for this trigger
+										(cannot be changed after creation)
+									</small>
+								</label>
+							</div>
 
-						<div className={styles.formGroup}>
-							<label>
-								<input
-									type='checkbox'
-									checked={formData.enabled}
-									onChange={e =>
-										setFormData({
-											...formData,
-											enabled: e.target.checked,
-										})
-									}
-								/>
-								Enabled
-							</label>
-						</div>
+							<div className={styles.formGroup}>
+								<label>
+									Trigger Name *
+									<input
+										type='text'
+										value={formData.trigger_name}
+										onChange={e =>
+											setFormData({
+												...formData,
+												trigger_name: e.target.value,
+											})
+										}
+										required
+										placeholder='e.g., Device Online'
+									/>
+								</label>
+							</div>
 
-						<div className={styles.formActions}>
-							<button type='submit' className={styles.saveButton}>
-								{editingTrigger ? 'Update' : 'Create'} Trigger
-							</button>
-							<button
-								type='button'
-								onClick={resetForm}
-								className={styles.cancelButton}>
-								Cancel
-							</button>
-						</div>
-					</form>
+							<div className={styles.formGroup}>
+								<label>
+									Description
+									<textarea
+										value={formData.description}
+										onChange={e =>
+											setFormData({
+												...formData,
+												description: e.target.value,
+											})
+										}
+										placeholder='Optional description of what this trigger does'
+										rows={3}
+									/>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Output Schema * (JSON)
+									<textarea
+										value={JSON.stringify(
+											formData.output_schema,
+											null,
+											2
+										)}
+										onChange={e => {
+											try {
+												const parsed = JSON.parse(
+													e.target.value
+												)
+												setFormData({
+													...formData,
+													output_schema: parsed,
+												})
+											} catch (err) {
+												// Invalid JSON, keep the text for user to fix
+											}
+										}}
+										required
+										placeholder='{"type": "object", "properties": {...}, "required": [...]}'
+										rows={10}
+										className={styles.jsonInput}
+									/>
+									<small>
+										JSON Schema defining what data this
+										trigger emits
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									<input
+										type='checkbox'
+										checked={formData.enabled}
+										onChange={e =>
+											setFormData({
+												...formData,
+												enabled: e.target.checked,
+											})
+										}
+									/>
+									Enabled
+								</label>
+							</div>
+
+							<div className={styles.formActions}>
+								<button
+									type='submit'
+									className={styles.saveButton}>
+									{editingTrigger ? 'Update' : 'Create'}{' '}
+									Trigger
+								</button>
+								<button
+									type='button'
+									onClick={resetForm}
+									className={styles.cancelButton}>
+									Cancel
+								</button>
+							</div>
+						</form>
 					</div>
 				</div>
 			)}

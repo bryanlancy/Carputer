@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl, authenticatedFetch } from '../utils/api'
-import { extractDataTypes } from '../utils/dataTypeExtractor'
-import { DataTypeIcons } from '../utils/dataTypeIcons'
+import { useAuth } from '../../contexts/AuthContext'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
+import { extractDataTypes } from '../../utils/dataTypeExtractor'
+import { DataTypeIcons } from '../../utils/dataTypeIcons'
 import styles from './ActionManager.module.scss'
 
 interface Action {
@@ -247,154 +247,155 @@ export default function ActionManager() {
 							</div>
 						)}
 						<form onSubmit={handleSubmit} className={styles.form}>
-
-						<div className={styles.formGroup}>
-							<label>
-								Action Code *
-								<input
-									type='text'
-									value={formData.event_code}
-									onChange={e =>
-										setFormData({
-											...formData,
-											event_code: e.target.value,
-										})
-									}
-									required
-									disabled={!!editingAction}
-									placeholder='e.g., show_notification'
-								/>
-								<small>
-									Unique identifier for this action (cannot be
-									changed after creation)
-								</small>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Action Name *
-								<input
-									type='text'
-									value={formData.event_name}
-									onChange={e =>
-										setFormData({
-											...formData,
-											event_name: e.target.value,
-										})
-									}
-									required
-									placeholder='e.g., Show Notification'
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Description
-								<textarea
-									value={formData.description}
-									onChange={e =>
-										setFormData({
-											...formData,
-											description: e.target.value,
-										})
-									}
-									placeholder='Optional description of what this action does'
-									rows={3}
-								/>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Handler Type *
-								<select
-									value={formData.handler_type}
-									onChange={e =>
-										setFormData({
-											...formData,
-											handler_type: e.target.value,
-										})
-									}
-									required>
-									<option value='notification'>
-										Notification
-									</option>
-									<option value='email'>Email</option>
-									<option value='command'>Command</option>
-									<option value='webhook'>Webhook</option>
-									<option value='custom'>Custom</option>
-								</select>
-								<small>
-									The type of handler that will execute this
-									action
-								</small>
-							</label>
-						</div>
-
-						<div className={styles.formGroup}>
-							<label>
-								Input Schema * (JSON)
-								<textarea
-									value={JSON.stringify(
-										formData.input_schema,
-										null,
-										2
-									)}
-									onChange={e => {
-										try {
-											const parsed = JSON.parse(
-												e.target.value
-											)
+							<div className={styles.formGroup}>
+								<label>
+									Action Code *
+									<input
+										type='text'
+										value={formData.event_code}
+										onChange={e =>
 											setFormData({
 												...formData,
-												input_schema: parsed,
+												event_code: e.target.value,
 											})
-										} catch (err) {
-											// Invalid JSON, keep the text for user to fix
 										}
-									}}
-									required
-									placeholder='{"type": "object", "properties": {...}, "required": [...]}'
-									rows={10}
-									className={styles.jsonInput}
-								/>
-								<small>
-									JSON Schema defining what data this action
-									requires
-								</small>
-							</label>
-						</div>
+										required
+										disabled={!!editingAction}
+										placeholder='e.g., show_notification'
+									/>
+									<small>
+										Unique identifier for this action
+										(cannot be changed after creation)
+									</small>
+								</label>
+							</div>
 
-						<div className={styles.formGroup}>
-							<label>
-								<input
-									type='checkbox'
-									checked={formData.enabled}
-									onChange={e =>
-										setFormData({
-											...formData,
-											enabled: e.target.checked,
-										})
-									}
-								/>
-								Enabled
-							</label>
-						</div>
+							<div className={styles.formGroup}>
+								<label>
+									Action Name *
+									<input
+										type='text'
+										value={formData.event_name}
+										onChange={e =>
+											setFormData({
+												...formData,
+												event_name: e.target.value,
+											})
+										}
+										required
+										placeholder='e.g., Show Notification'
+									/>
+								</label>
+							</div>
 
-						<div className={styles.formActions}>
-							<button type='submit' className={styles.saveButton}>
-								{editingAction ? 'Update' : 'Create'} Action
-							</button>
-							<button
-								type='button'
-								onClick={resetForm}
-								className={styles.cancelButton}>
-								Cancel
-							</button>
-						</div>
-					</form>
+							<div className={styles.formGroup}>
+								<label>
+									Description
+									<textarea
+										value={formData.description}
+										onChange={e =>
+											setFormData({
+												...formData,
+												description: e.target.value,
+											})
+										}
+										placeholder='Optional description of what this action does'
+										rows={3}
+									/>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Handler Type *
+									<select
+										value={formData.handler_type}
+										onChange={e =>
+											setFormData({
+												...formData,
+												handler_type: e.target.value,
+											})
+										}
+										required>
+										<option value='notification'>
+											Notification
+										</option>
+										<option value='email'>Email</option>
+										<option value='command'>Command</option>
+										<option value='webhook'>Webhook</option>
+										<option value='custom'>Custom</option>
+									</select>
+									<small>
+										The type of handler that will execute
+										this action
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									Input Schema * (JSON)
+									<textarea
+										value={JSON.stringify(
+											formData.input_schema,
+											null,
+											2
+										)}
+										onChange={e => {
+											try {
+												const parsed = JSON.parse(
+													e.target.value
+												)
+												setFormData({
+													...formData,
+													input_schema: parsed,
+												})
+											} catch (err) {
+												// Invalid JSON, keep the text for user to fix
+											}
+										}}
+										required
+										placeholder='{"type": "object", "properties": {...}, "required": [...]}'
+										rows={10}
+										className={styles.jsonInput}
+									/>
+									<small>
+										JSON Schema defining what data this
+										action requires
+									</small>
+								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<label>
+									<input
+										type='checkbox'
+										checked={formData.enabled}
+										onChange={e =>
+											setFormData({
+												...formData,
+												enabled: e.target.checked,
+											})
+										}
+									/>
+									Enabled
+								</label>
+							</div>
+
+							<div className={styles.formActions}>
+								<button
+									type='submit'
+									className={styles.saveButton}>
+									{editingAction ? 'Update' : 'Create'} Action
+								</button>
+								<button
+									type='button'
+									onClick={resetForm}
+									className={styles.cancelButton}>
+									Cancel
+								</button>
+							</div>
+						</form>
 					</div>
 				</div>
 			)}

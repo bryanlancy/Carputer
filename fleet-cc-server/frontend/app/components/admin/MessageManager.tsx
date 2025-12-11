@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl, authenticatedFetch } from '../utils/api'
+import { useAuth } from '../../contexts/AuthContext'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import TemplateEditor from './TemplateEditor'
-import { extractDataTypes } from '../utils/dataTypeExtractor'
-import { DataTypeIcons } from '../utils/dataTypeIcons'
+import { extractDataTypes } from '../../utils/dataTypeExtractor'
+import { DataTypeIcons } from '../../utils/dataTypeIcons'
 import styles from './MessageManager.module.scss'
 
 interface Message {

@@ -17,9 +17,9 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import TriggerNode, { TriggerNodeData } from '../nodes/TriggerNode'
 import EventNode, { EventNodeData } from '../nodes/EventNode'
-import { validateConnection } from '../utils/schemaValidation'
-import ContextMenu from './wiring/ContextMenu'
-import EdgeWithTooltip from './wiring/EdgeWithTooltip'
+import { validateConnection } from '../../utils/schemaValidation'
+import ContextMenu from './ContextMenu'
+import EdgeWithTooltip from './EdgeWithTooltip'
 import styles from './WiringCanvas.module.scss'
 
 export interface WiringCanvasProps {

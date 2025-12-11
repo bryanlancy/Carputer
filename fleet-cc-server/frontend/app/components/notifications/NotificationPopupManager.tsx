@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
+import { useWebSocket, WebSocketMessage } from '../../hooks/useWebSocket'
 import { NotificationPopup } from './NotificationPopup'
 import styles from './NotificationPopupManager.module.scss'
 

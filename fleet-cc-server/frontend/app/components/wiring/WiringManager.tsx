@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl, authenticatedFetch } from '../utils/api'
+import { useAuth } from '../../contexts/AuthContext'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import WiringCanvas from './WiringCanvas'
 import TriggerSidebar from './TriggerSidebar'
 import ActionSidebar from './ActionSidebar'
@@ -329,7 +329,9 @@ export default function WiringManager() {
 		}
 
 		if (hasInvalidConnections) {
-			setError('Cannot save: There are invalid connections. Please fix them before saving.')
+			setError(
+				'Cannot save: There are invalid connections. Please fix them before saving.'
+			)
 			return
 		}
 
@@ -525,7 +527,8 @@ export default function WiringManager() {
 					<div className={styles.actions}>
 						{hasInvalidConnections && (
 							<div className={styles.error}>
-								⚠️ Invalid connections detected. Please fix them before saving.
+								⚠️ Invalid connections detected. Please fix them
+								before saving.
 							</div>
 						)}
 						<button

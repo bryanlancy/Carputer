@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { getApiUrl } from '../utils/api'
+import { useAuth } from '../../contexts/AuthContext'
+import { getApiUrl } from '../../utils/api'
 import { formatDistanceToNow } from 'date-fns'
-import { parseMarkdown } from '../utils/markdown'
-import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
+import { parseMarkdown } from '../../utils/markdown'
+import { useWebSocket, WebSocketMessage } from '../../hooks/useWebSocket'
 import styles from './NotificationFeed.module.scss'
 
 interface Tag {

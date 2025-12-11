@@ -56,7 +56,9 @@ export default function Home() {
 		const fetchMetrics = async () => {
 			try {
 				const apiUrl = getApiUrl()
-				const response = await authenticatedFetch(`${apiUrl}/api/metrics/overview`)
+				const response = await authenticatedFetch(
+					`${apiUrl}/api/metrics/overview`
+				)
 				if (response.ok) {
 					const data = await response.json()
 					setMetrics(data)

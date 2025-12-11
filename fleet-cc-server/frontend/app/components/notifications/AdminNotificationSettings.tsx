@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import NotificationTypeManager from './NotificationTypeManager'
-import MessageManager from './MessageManager'
+import MessageManager from '../admin/MessageManager'
 import styles from './AdminNotificationSettings.module.scss'
 
 export default function AdminNotificationSettings() {
