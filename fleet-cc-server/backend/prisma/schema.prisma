@@ -150,15 +150,18 @@ model Notification {
   priority            Int       @default(0)
   variable_schema     Json?     // JSON Schema defining what variables this notification uses
   show_in_feed        Boolean   @default(true)
+  show_popup          Boolean   @default(false)
   created_at          DateTime  @default(now())
   updated_at          DateTime  @default(now()) @updatedAt
 
   // Relations
   user_notifications   UserNotification[]
+  // Note: tag_associations are queried via entity_type='notification' and entity_id
 
   @@index([enabled])
   @@index([priority])
   @@index([show_in_feed])
+  @@index([show_popup])
   @@index([notification_type])
   @@map("notifications")
 }
@@ -203,12 +206,16 @@ model UserNotification {
   notification        Notification    @relation(fields: [notification_id], references: [id], onDelete: Cascade)
   viewed              Boolean         @default(false)
   viewed_at           DateTime?
+  hidden              Boolean         @default(false)
   created_at          DateTime        @default(now())
+
+  // Note: tag_associations are queried via entity_type='user_notification' and entity_id
 
   @@unique([user_id, notification_id], name: "user_notification_unique")
   @@index([user_id])
   @@index([notification_id])
   @@index([viewed])
+  @@index([hidden])
   @@map("user_notifications")
 }
 
@@ -347,5 +354,42 @@ model Message {
   @@index([message_type])
   @@index([enabled])
   @@map("messages")
+}
+
+model Tag {
+  id                  Int             @id @default(autoincrement())
+  name                String          @unique @db.VarChar(100)
+  description         String?         @db.Text
+  color               String?         @db.VarChar(7) // Hex color for UI
+  category            String?         @db.VarChar(50) // Optional grouping
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  tag_associations    TagAssociation[]
+
+  @@index([name])
+  @@index([category])
+  @@map("tags")
+}
+
+model TagAssociation {
+  id                  Int             @id @default(autoincrement())
+  tag_id              Int
+  tag                 Tag             @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+  entity_type         String          @db.VarChar(50) // 'notification', 'user_notification', 'device', etc.
+  entity_id           Int             // ID of the associated entity
+  inherited           Boolean         @default(false) // true if inherited from parent entity
+  created_at          DateTime        @default(now())
+
+  // Note: Relations to Notification and UserNotification are polymorphic based on entity_type
+  // Prisma doesn't support true polymorphic relations, so we use entity_type + entity_id
+  // The relations above are for type safety but won't enforce foreign keys
+
+  @@unique([tag_id, entity_type, entity_id], name: "unique_tag_association")
+  @@index([entity_type, entity_id])
+  @@index([tag_id])
+  @@index([inherited])
+  @@map("tag_associations")
 }
 
