@@ -1,0 +1,140 @@
+.overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	backdrop-filter: blur(4px);
+}
+
+.modal {
+	background: var(--bg-secondary, #1e293b);
+	border-radius: 12px;
+	padding: 0;
+	min-width: 400px;
+	max-width: 500px;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
+		0 10px 10px -5px rgba(0, 0, 0, 0.2);
+	border: 1px solid var(--border-color, #334155);
+	animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateY(-20px) scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1.5rem;
+	border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.title {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: var(--text-primary, #f1f5f9);
+}
+
+.closeButton {
+	background: none;
+	border: none;
+	color: var(--text-secondary, #94a3b8);
+	font-size: 1.5rem;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 6px;
+	transition: all 0.2s;
+
+	&:hover {
+		background: var(--bg-tertiary, #334155);
+		color: var(--text-primary, #f1f5f9);
+	}
+}
+
+.content {
+	padding: 1.5rem;
+	color: var(--text-secondary, #cbd5e1);
+	line-height: 1.6;
+
+	p {
+		margin: 0;
+	}
+}
+
+.actions {
+	display: flex;
+	gap: 0.75rem;
+	justify-content: flex-end;
+	padding: 1.5rem;
+	border-top: 1px solid var(--border-color, #334155);
+}
+
+.button {
+	padding: 0.625rem 1.25rem;
+	border-radius: 8px;
+	font-size: 0.875rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+	border: none;
+	min-width: 80px;
+}
+
+.cancelButton {
+	background: var(--bg-tertiary, #334155);
+	color: var(--text-primary, #f1f5f9);
+
+	&:hover {
+		background: var(--bg-hover, #475569);
+	}
+}
+
+.confirmButton {
+	color: white;
+	font-weight: 600;
+
+	&.info {
+		background: var(--primary-color, #3b82f6);
+
+		&:hover {
+			background: var(--primary-hover, #2563eb);
+		}
+	}
+
+	&.warning {
+		background: var(--warning-color, #f59e0b);
+
+		&:hover {
+			background: #d97706;
+		}
+	}
+
+	&.danger {
+		background: var(--error-color, #ef4444);
+
+		&:hover {
+			background: #dc2626;
+		}
+	}
+}
