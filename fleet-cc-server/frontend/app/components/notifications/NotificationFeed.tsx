@@ -67,30 +67,33 @@ export default function NotificationFeed({
 	const feedRef = useRef<HTMLDivElement>(null)
 
 	// Handle WebSocket messages for real-time notifications
-	const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
-		if (message.type === 'notification' && message.notification) {
-			const newNotification = message.notification as Notification
-			// Add new notification to the top of the list
-			setNotifications(prev => {
-				// Check if notification already exists
-				const exists = prev.some(n => n.id === newNotification.id)
-				if (exists) {
-					return prev.map(n =>
-						n.id === newNotification.id
-							? { ...n, ...newNotification }
-							: n
-					)
+	const handleWebSocketMessage = useCallback(
+		(message: WebSocketMessage) => {
+			if (message.type === 'notification' && message.notification) {
+				const newNotification = message.notification as Notification
+				// Add new notification to the top of the list
+				setNotifications(prev => {
+					// Check if notification already exists
+					const exists = prev.some(n => n.id === newNotification.id)
+					if (exists) {
+						return prev.map(n =>
+							n.id === newNotification.id
+								? { ...n, ...newNotification }
+								: n
+						)
+					}
+					return [newNotification, ...prev]
+				})
+				// Reload count from backend to ensure accuracy
+				// This ensures we only count notifications that should appear in feed
+				// (hidden: false, show_in_feed: true)
+				if (session?.access_token) {
+					loadUnviewedCount()
 				}
-				return [newNotification, ...prev]
-			})
-			// Update unviewed count if notification is not viewed
-			if (!newNotification.viewed) {
-				const newCount = globalUnviewedCount + 1
-				setUnviewedCount(newCount)
-				updateGlobalUnviewedCount(newCount)
 			}
-		}
-	}, [])
+		},
+		[session?.access_token]
+	)
 
 	// Subscribe to WebSocket
 	const { connected } = useWebSocket(handleWebSocketMessage, [
@@ -174,7 +177,9 @@ export default function NotificationFeed({
 
 			if (response.ok) {
 				const data = await response.json()
-				setUnviewedCount(data.count || 0)
+				const newCount = data.count || 0
+				setUnviewedCount(newCount)
+				updateGlobalUnviewedCount(newCount)
 			}
 		} catch (error) {
 			console.error('Error loading unviewed count:', error)
@@ -229,6 +234,12 @@ export default function NotificationFeed({
 
 		setHidingNotificationId(notificationId)
 
+		// Check if notification was unviewed before hiding
+		const notificationToHide = notifications.find(
+			n => n.id === notificationId
+		)
+		const wasUnviewed = notificationToHide && !notificationToHide.viewed
+
 		try {
 			const apiUrl = getApiUrl()
 			await fetch(
@@ -243,6 +254,16 @@ export default function NotificationFeed({
 
 			// Remove from local state immediately
 			setNotifications(prev => prev.filter(n => n.id !== notificationId))
+
+			// Decrement count if notification was unviewed
+			if (wasUnviewed) {
+				const newCount = Math.max(0, unviewedCount - 1)
+				setUnviewedCount(newCount)
+				updateGlobalUnviewedCount(newCount)
+			}
+
+			// Reload count to ensure accuracy
+			loadUnviewedCount()
 		} catch (error) {
 			console.error('Error hiding notification:', error)
 		} finally {
@@ -270,7 +291,7 @@ export default function NotificationFeed({
 					<div className={styles.empty}>No notifications</div>
 				) : (
 					<div className={styles.notificationList}>
-						{notifications.map(notification => {
+						{notifications.map((notification, index) => {
 							const notificationType =
 								(notification.notification_type ||
 									'default') as
@@ -288,9 +309,14 @@ export default function NotificationFeed({
 								notification.message_template ||
 								null
 
+							// Use a unique key combining id and index to handle potential duplicates
+							const uniqueKey = notification.id
+								? `notification-${notification.id}-${index}`
+								: `notification-${index}-${Date.now()}`
+
 							return (
 								<div
-									key={notification.id}
+									key={uniqueKey}
 									className={`${styles.notificationItem} ${
 										styles[
 											`notificationType_${notificationType}`
@@ -389,12 +415,14 @@ export default function NotificationFeed({
 												className={
 													styles.notificationTime
 												}>
-												{formatDistanceToNow(
-													new Date(
-														notification.created_at
-													),
-													{ addSuffix: true }
-												)}
+												{notification.created_at
+													? formatDistanceToNow(
+															new Date(
+																notification.created_at
+															),
+															{ addSuffix: true }
+													  )
+													: 'Just now'}
 											</span>
 											{notification.device && (
 												<span
@@ -444,7 +472,7 @@ export function useNotificationCount() {
 	useEffect(() => {
 		if (!session?.access_token) {
 			setCount(0)
-			setUnviewedCount(0)
+			updateGlobalUnviewedCount(0)
 			return
 		}
 
@@ -470,7 +498,7 @@ export function useNotificationCount() {
 					const data = await response.json()
 					const newCount = data.count || 0
 					setCount(newCount)
-					setUnviewedCount(newCount)
+					updateGlobalUnviewedCount(newCount)
 				}
 			} catch (error) {
 				if (!cancelled) {

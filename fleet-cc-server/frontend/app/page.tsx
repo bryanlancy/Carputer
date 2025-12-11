@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import styles from './page.module.scss'
 import { getApiUrl, authenticatedFetch } from './utils/api'
 import { useWebSocket, WebSocketMessage } from './hooks/useWebSocket'
-import VersionDistributionPieChart from './components/VersionDistributionPieChart'
+import VersionDistributionPieChart from './components/admin/VersionDistributionPieChart'
 
 interface FleetMetrics {
 	devices: {

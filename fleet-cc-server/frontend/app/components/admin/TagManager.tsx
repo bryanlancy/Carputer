@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
-import ConfirmModal from './ConfirmModal'
+import ConfirmModal from '../ui/ConfirmModal'
 import styles from './TagManager.module.scss'
 
 interface Tag {

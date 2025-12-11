@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
-import TemplateEditor from './TemplateEditor'
+import TemplateEditor from '../admin/TemplateEditor'
 import styles from './NotificationRuleManager.module.scss'
 
 interface NotificationRule {

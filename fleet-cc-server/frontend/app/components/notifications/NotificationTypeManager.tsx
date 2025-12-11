@@ -6,8 +6,8 @@ import { getApiUrl } from '../utils/api'
 import { extractDataTypes } from '../utils/dataTypeExtractor'
 import { DataTypeIcons } from '../utils/dataTypeIcons'
 import { generateSchemaFromTemplate } from '../utils/templateSchemaGenerator'
-import TemplateEditor from './TemplateEditor'
-import ConfirmModal from './ConfirmModal'
+import TemplateEditor from '../admin/TemplateEditor'
+import ConfirmModal from '../ui/ConfirmModal'
 import styles from './NotificationTypeManager.module.scss'
 
 interface Notification {
@@ -32,11 +32,10 @@ export default function NotificationTypeManager() {
 	const [error, setError] = useState<string | null>(null)
 	const [showForm, setShowForm] = useState(false)
 	const [editingType, setEditingType] = useState<Notification | null>(null)
-	const [testingNotificationId, setTestingNotificationId] = useState<
-		number | null
-	>(null)
 	const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+	const [deleting, setDeleting] = useState(false)
+	const [deleteError, setDeleteError] = useState<string | null>(null)
 	const [formData, setFormData] = useState({
 		name: '',
 		description: '',
@@ -204,17 +203,22 @@ export default function NotificationTypeManager() {
 	const handleDelete = async (id: number) => {
 		setDeleteConfirmId(id)
 		setShowDeleteConfirm(true)
+		setDeleteError(null) // Reset error when opening modal
 	}
 
 	const confirmDelete = async () => {
-		if (!deleteConfirmId) return
+		if (!deleteConfirmId || deleting) return
+
+		setDeleting(true)
+		setDeleteError(null)
 
 		try {
 			const apiUrl = getApiUrl()
 			const token = session?.access_token
 
 			if (!token) {
-				setError('Authentication required')
+				setDeleteError('Authentication required')
+				setDeleting(false)
 				return
 			}
 
@@ -229,18 +233,32 @@ export default function NotificationTypeManager() {
 			)
 
 			if (response.ok) {
+				// Success - close modal and reload types
+				setShowDeleteConfirm(false)
+				setDeleteConfirmId(null)
+				setDeleteError(null)
 				await loadTypes()
 			} else {
+				// Error - show error message in modal
 				const errorData = await response
 					.json()
 					.catch(() => ({ error: 'Unknown error' }))
-				setError(
+				setDeleteError(
 					errorData.error || 'Failed to delete notification type'
 				)
 			}
 		} catch (err: any) {
-			setError(`Error: ${err.message}`)
+			setDeleteError(`Error: ${err.message}`)
+		} finally {
+			setDeleting(false)
 		}
+	}
+
+	const handleDeleteCancel = () => {
+		setShowDeleteConfirm(false)
+		setDeleteConfirmId(null)
+		setDeleteError(null)
+		setDeleting(false)
 	}
 
 	const handleCancel = () => {
@@ -264,7 +282,6 @@ export default function NotificationTypeManager() {
 		e?.preventDefault()
 		e?.stopPropagation()
 
-		setTestingNotificationId(notificationId)
 		setError(null)
 
 		try {
@@ -298,8 +315,6 @@ export default function NotificationTypeManager() {
 			}
 		} catch (err: any) {
 			setError(`Error: ${err.message}`)
-		} finally {
-			setTestingNotificationId(null)
 		}
 	}
 
@@ -697,17 +712,10 @@ export default function NotificationTypeManager() {
 												onClick={e =>
 													handleTest(type.id, e)
 												}
-												disabled={
-													testingNotificationId ===
-													type.id
-												}
 												className={styles.testButton}
 												type='button'
 												style={{ minWidth: '80px' }}>
-												{testingNotificationId ===
-												type.id
-													? 'Testing...'
-													: 'Test'}
+												Test
 											</button>
 											<button
 												onClick={() =>
@@ -728,15 +736,37 @@ export default function NotificationTypeManager() {
 			<ConfirmModal
 				isOpen={showDeleteConfirm}
 				title='Delete Notification Type'
-				message='Are you sure you want to delete this notification type? This action cannot be undone.'
+				message={
+					<div>
+						{deleteError ? (
+							<>
+								<p
+									style={{
+										color: '#ef4444',
+										marginBottom: '1rem',
+									}}>
+									{deleteError}
+								</p>
+								<p>
+									Are you sure you want to delete this
+									notification type? This action cannot be
+									undone.
+								</p>
+							</>
+						) : (
+							<p>
+								Are you sure you want to delete this
+								notification type? This action cannot be undone.
+							</p>
+						)}
+					</div>
+				}
 				onConfirm={confirmDelete}
-				onCancel={() => {
-					setShowDeleteConfirm(false)
-					setDeleteConfirmId(null)
-				}}
-				confirmText='Delete'
+				onCancel={handleDeleteCancel}
+				confirmText={deleting ? 'Deleting...' : 'Delete'}
 				cancelText='Cancel'
 				variant='danger'
+				confirmDisabled={deleting}
 			/>
 		</div>
 	)

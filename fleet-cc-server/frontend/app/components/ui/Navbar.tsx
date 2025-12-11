@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
-import NotificationFeed, { useNotificationCount } from './NotificationFeed'
+import NotificationFeed, { useNotificationCount } from '../notifications/NotificationFeed'
 import styles from './Navbar.module.scss'
 
 export default function Navbar() {

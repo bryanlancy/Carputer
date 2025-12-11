@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import NotificationSettings from '../components/NotificationSettings'
+import NotificationSettings from '../components/notifications/NotificationSettings'
 import styles from './page.module.scss'
 
 export default function SettingsPage() {

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useEffect } from 'react'
 import ReactFlow, {
 	Node,
 	Edge,
@@ -12,10 +12,11 @@ import ReactFlow, {
 	Background,
 	MiniMap,
 	BackgroundVariant,
+	NodeProps,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import TriggerNode, { TriggerNodeData } from './nodes/TriggerNode'
-import EventNode, { EventNodeData } from './nodes/EventNode'
+import TriggerNode, { TriggerNodeData } from '../nodes/TriggerNode'
+import EventNode, { EventNodeData } from '../nodes/EventNode'
 import { validateConnection } from '../utils/schemaValidation'
 import ContextMenu from './wiring/ContextMenu'
 import EdgeWithTooltip from './wiring/EdgeWithTooltip'
@@ -65,12 +66,6 @@ export interface WiringCanvasProps {
 	workspaceId?: number | null
 }
 
-// Create nodeTypes factory to pass workspaceId to nodes
-const createNodeTypes = (workspaceId?: number | null) => ({
-	trigger: (props: NodeProps) => <TriggerNode {...props} workspaceId={workspaceId} />,
-	event: EventNode,
-})
-
 // Define edgeTypes outside component
 const edgeTypes = {
 	default: EdgeWithTooltip,
@@ -95,11 +90,23 @@ export default function WiringCanvas({
 	// Use internal ref to track latest nodes for validation (separate from prop nodesRef)
 	const internalNodesRef = useRef(nodes)
 
+	// Store workspaceId in a ref so nodeTypes can access it without causing re-renders
+	const workspaceIdRef = useRef(workspaceId)
+	useEffect(() => {
+		workspaceIdRef.current = workspaceId
+	}, [workspaceId])
+
 	// Create nodeTypes with workspaceId - use useMemo to keep reference stable
-	const nodeTypes = useMemo(() => ({
-		trigger: (props: NodeProps<TriggerNodeData>) => <TriggerNode {...props} workspaceId={workspaceId} />,
-		event: EventNode,
-	}), [workspaceId])
+	// Access workspaceId via ref to avoid React Flow warning about unstable nodeTypes
+	const nodeTypes = useMemo(
+		() => ({
+			trigger: (props: NodeProps<TriggerNodeData>) => (
+				<TriggerNode {...props} workspaceId={workspaceIdRef.current} />
+			),
+			event: EventNode,
+		}),
+		[]
+	) // Empty deps array - workspaceId accessed via ref
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
@@ -227,7 +234,11 @@ export default function WiringCanvas({
 				const eventMatch = edge.target.match(/^event-(\d+)/)
 
 				if (!triggerMatch || !eventMatch) {
-					return { ...edge, style: { stroke: '#ef4444' }, animated: false }
+					return {
+						...edge,
+						style: { stroke: '#ef4444' },
+						animated: false,
+					}
 				}
 
 				const triggerId = parseInt(triggerMatch[1])
@@ -235,11 +246,17 @@ export default function WiringCanvas({
 
 				const trigger = triggers.find(t => t.id === triggerId)
 				// Use internalNodesRef to get the latest nodes state (including config changes)
-				const eventNode = internalNodesRef.current.find(n => n.id === edge.target)
+				const eventNode = internalNodesRef.current.find(
+					n => n.id === edge.target
+				)
 				const event = events.find(e => e.id === eventId)
 
 				if (!trigger || !event || !eventNode) {
-					return { ...edge, style: { stroke: '#ef4444' }, animated: false }
+					return {
+						...edge,
+						style: { stroke: '#ef4444' },
+						animated: false,
+					}
 				}
 
 				// Get effective event schema based on node configuration
@@ -359,7 +376,6 @@ export default function WiringCanvas({
 			edgesRef.current = edges
 		}
 	}, [edges, edgesRef])
-
 
 	// Check for invalid edges and notify parent
 	useEffect(() => {
@@ -569,7 +585,9 @@ export default function WiringCanvas({
 				animated: validation.valid,
 				style: { stroke: validation.valid ? '#22c55e' : '#ef4444' },
 				data: {
-					validationError: validation.valid ? undefined : validation.error,
+					validationError: validation.valid
+						? undefined
+						: validation.error,
 				},
 			}
 			setEdges(eds => addEdge(newEdge, eds))

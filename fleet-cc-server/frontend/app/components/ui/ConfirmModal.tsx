@@ -12,6 +12,7 @@ interface ConfirmModalProps {
 	confirmText?: string
 	cancelText?: string
 	variant?: 'danger' | 'warning' | 'info'
+	confirmDisabled?: boolean
 }
 
 export default function ConfirmModal({
@@ -23,6 +24,7 @@ export default function ConfirmModal({
 	confirmText = 'Confirm',
 	cancelText = 'Cancel',
 	variant = 'info',
+	confirmDisabled = false,
 }: ConfirmModalProps) {
 	if (!isOpen) return null
 
@@ -55,7 +57,8 @@ export default function ConfirmModal({
 					</button>
 					<button
 						className={`${styles.button} ${styles.confirmButton} ${styles[variant]}`}
-						onClick={onConfirm}>
+						onClick={onConfirm}
+						disabled={confirmDisabled}>
 						{confirmText}
 					</button>
 				</div>

@@ -102,7 +102,7 @@ export default function TriggerNode({ data, workspaceId }: TriggerNodeProps) {
 						className={styles.testButton}
 						title="Test this trigger node's connections"
 						type='button'>
-						{testing ? '...' : 'Test'}
+						Test
 					</button>
 				)}
 			</div>

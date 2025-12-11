@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { getApiUrl } from '../utils/api'
-import AdminNotificationSettings from '../components/AdminNotificationSettings'
-import WiringManager from '../components/WiringManager'
-import TriggerManager from '../components/TriggerManager'
-import ActionManager from '../components/ActionManager'
-import TagManager from '../components/TagManager'
+import AdminNotificationSettings from '../components/notifications/AdminNotificationSettings'
+import WiringManager from '../components/wiring/WiringManager'
+import TriggerManager from '../components/admin/TriggerManager'
+import ActionManager from '../components/admin/ActionManager'
+import TagManager from '../components/admin/TagManager'
 import styles from './page.module.scss'
 
 export default function AdminPage() {
@@ -108,60 +108,60 @@ export default function AdminPage() {
 						<div className={styles.groupHeader}>
 							Message Configuration
 						</div>
-						<ul>
-							<li>
-								<button
-									className={
-										activeSection === 'triggers'
-											? styles.active
-											: ''
-									}
+					<ul>
+						<li>
+							<button
+								className={
+									activeSection === 'triggers'
+										? styles.active
+										: ''
+								}
 									onClick={() =>
 										setActiveSection('triggers')
 									}>
-									<span className={styles.icon}>⚡</span>
-									Triggers
-								</button>
-							</li>
-							<li>
-								<button
-									className={
-										activeSection === 'actions'
-											? styles.active
-											: ''
-									}
-									onClick={() => setActiveSection('actions')}>
-									<span className={styles.icon}>🎯</span>
-									Actions
-								</button>
-							</li>
-							<li>
-								<button
-									className={
-										activeSection === 'messages'
-											? styles.active
-											: ''
-									}
+								<span className={styles.icon}>⚡</span>
+								Triggers
+							</button>
+						</li>
+						<li>
+							<button
+								className={
+									activeSection === 'actions'
+										? styles.active
+										: ''
+								}
+								onClick={() => setActiveSection('actions')}>
+								<span className={styles.icon}>🎯</span>
+								Actions
+							</button>
+						</li>
+						<li>
+							<button
+								className={
+									activeSection === 'messages'
+										? styles.active
+										: ''
+								}
 									onClick={() =>
 										setActiveSection('messages')
 									}>
-									<span className={styles.icon}>💬</span>
-									Messages
-								</button>
-							</li>
-							<li>
-								<button
-									className={
-										activeSection === 'wiring'
-											? styles.active
-											: ''
-									}
-									onClick={() => setActiveSection('wiring')}>
-									<span className={styles.icon}>🔌</span>
-									Wiring
-								</button>
-							</li>
-						</ul>
+								<span className={styles.icon}>💬</span>
+								Messages
+							</button>
+						</li>
+						<li>
+							<button
+								className={
+									activeSection === 'wiring'
+										? styles.active
+										: ''
+								}
+								onClick={() => setActiveSection('wiring')}>
+								<span className={styles.icon}>🔌</span>
+								Wiring
+							</button>
+						</li>
+					</ul>
 					</div>
 					<div className={styles.navGroup}>
 						<div className={styles.groupHeader}>Tag Management</div>

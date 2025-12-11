@@ -22,7 +22,11 @@ export default function NotificationPopupManager() {
 			const notification = message.notification as any
 
 			// Only show popup if show_popup is true
-			if (notification.show_popup) {
+			// Check both show_popup and showPopup (for compatibility)
+			if (
+				notification.show_popup === true ||
+				notification.showPopup === true
+			) {
 				const popupNotification: PopupNotification = {
 					id: `${notification.id}-${Date.now()}`,
 					title: notification.name || 'Notification',

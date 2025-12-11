@@ -114,10 +114,15 @@
 	color: white;
 	font-weight: 600;
 
+	&:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	&.info {
 		background: var(--primary-color, #3b82f6);
 
-		&:hover {
+		&:hover:not(:disabled) {
 			background: var(--primary-hover, #2563eb);
 		}
 	}
@@ -125,7 +130,7 @@
 	&.warning {
 		background: var(--warning-color, #f59e0b);
 
-		&:hover {
+		&:hover:not(:disabled) {
 			background: #d97706;
 		}
 	}
@@ -133,7 +138,7 @@
 	&.danger {
 		background: var(--error-color, #ef4444);
 
-		&:hover {
+		&:hover:not(:disabled) {
 			background: #dc2626;
 		}
 	}
