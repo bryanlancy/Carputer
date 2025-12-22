@@ -341,8 +341,9 @@ export class WiringExecutorService {
 		isTest: boolean = true,
 		eventContext?: { tags: Set<number> }
 	): Promise<any> {
+		// For real execution (not test), userId should be provided (we get all users in executeTriggerForAllWorkspaces)
 		if (!userId) {
-			throw new Error('User ID required for test notifications')
+			throw new Error('User ID required for notification creation')
 		}
 
 		let notificationId: number
@@ -545,5 +546,250 @@ export class WiringExecutorService {
 			test_mode: true,
 			message: 'Command would be executed in production mode',
 		}
+	}
+
+	/**
+	 * Execute wiring configurations for all workspaces when a trigger code occurs
+	 * This is called when real events happen (device online, offline, etc.)
+	 * @param triggerCode - The trigger code (e.g., 'device.online', 'device.offline')
+	 * @param triggerData - The actual event data (not test data)
+	 * @returns Array of execution results per workspace
+	 */
+	async executeTriggerForAllWorkspaces(
+		triggerCode: string,
+		triggerData: any
+	): Promise<Array<{
+		workspaceId: number
+		success: boolean
+		executedEvents: number
+		errors?: string[]
+	}>> {
+		console.log(`[WiringExecutor] Executing trigger ${triggerCode} for all workspaces`)
+
+		// Find all workspaces with wiring configurations
+		const workspaces = await this.prisma.workspace.findMany({
+			include: {
+				wiring_configuration: true,
+			},
+		})
+
+		console.log(`[WiringExecutor] Found ${workspaces.length} workspaces`)
+
+		const results: Array<{
+			workspaceId: number
+			success: boolean
+			executedEvents: number
+			errors?: string[]
+		}> = []
+
+		// Find the trigger by code
+		const trigger = await this.triggerService.getTriggerByCode(triggerCode)
+		if (!trigger) {
+			console.warn(`[WiringExecutor] Trigger ${triggerCode} not found`)
+			return results
+		}
+		if (!trigger.enabled) {
+			console.warn(`[WiringExecutor] Trigger ${triggerCode} is disabled`)
+			return results
+		}
+
+		console.log(`[WiringExecutor] Found trigger: ${trigger.trigger_name} (ID: ${trigger.id})`)
+
+		// Process each workspace
+		for (const workspace of workspaces) {
+			if (!workspace.wiring_configuration) {
+				continue // No wiring configuration for this workspace
+			}
+
+			const wiring = workspace.wiring_configuration
+			if (!wiring.nodes || !wiring.edges) {
+				continue // Invalid wiring configuration
+			}
+
+			try {
+				// Find trigger node with matching trigger code
+				const triggerNode = (wiring.nodes as any[]).find(
+					(node: any) =>
+						node.id &&
+						node.id.startsWith(`trigger-${trigger.id}`) &&
+						node.data?.trigger_code === triggerCode
+				)
+
+				if (!triggerNode) {
+					console.log(`[WiringExecutor] Workspace ${workspace.id}: No trigger node found for ${triggerCode}`)
+					continue // This workspace doesn't have this trigger configured
+				}
+
+				console.log(`[WiringExecutor] Workspace ${workspace.id}: Found trigger node ${triggerNode.id}`)
+
+				// Find all edges connected to this trigger
+				const connectedEdges = (wiring.edges as any[]).filter(
+					(edge: any) => edge.source === triggerNode.id
+				)
+
+				console.log(`[WiringExecutor] Workspace ${workspace.id}: Found ${connectedEdges.length} connected edges`)
+
+				if (connectedEdges.length === 0) {
+					console.log(`[WiringExecutor] Workspace ${workspace.id}: No events connected to trigger`)
+					continue // No events connected to this trigger
+				}
+
+				// Get node configs from saved wiring configuration
+				const nodeConfigs = (wiring.node_config as any) || {}
+
+				// Execute each connected event (not in test mode - real execution)
+				let executedCount = 0
+				const errors: string[] = []
+
+				for (const edge of connectedEdges) {
+					// Skip invalid connections
+					if (edge.data?.validationError) {
+						errors.push(
+							`Invalid connection: ${edge.data.validationError}`
+						)
+						continue
+					}
+
+					// Extract event ID from target node ID
+					const eventMatch = edge.target.match(/^event-(\d+)/)
+					if (!eventMatch) {
+						errors.push(`Invalid event node ID: ${edge.target}`)
+						continue
+					}
+
+					const eventId = parseInt(eventMatch[1])
+					const event = await this.eventService.getEventById(eventId)
+
+					if (!event || !event.enabled) {
+						continue // Event not found or disabled
+					}
+
+					// Get effective event schema based on node configuration
+					let effectiveEvent = event
+					const eventNodeId = edge.target
+					const eventNodeConfig = nodeConfigs[eventNodeId]
+
+					// For variable event types, check node configuration
+					if (
+						event.event_code === 'show_notification' &&
+						eventNodeConfig?.notification_id
+					) {
+						// Get notification's variable_schema
+						const notification = await this.prisma.notification.findUnique(
+							{
+								where: { id: parseInt(eventNodeConfig.notification_id) },
+							}
+						)
+						if (notification?.variable_schema) {
+							effectiveEvent = {
+								...event,
+								input_schema: notification.variable_schema,
+							}
+						}
+					}
+
+					// Validate connection
+					const validation = this.wiringService.validateConnection(
+						trigger,
+						effectiveEvent
+					)
+
+					if (!validation.valid) {
+						errors.push(
+							`Validation failed for event ${eventId}: ${validation.error}`
+						)
+						continue
+					}
+
+					// Execute event handler (not in test mode - real execution)
+					try {
+						console.log(`[WiringExecutor] Workspace ${workspace.id}: Executing event ${eventId} (${event.event_code})`)
+
+						// For real events, get all users and execute for each
+						// For show_notification events, we need to create notifications for all users
+						if (event.event_code === 'show_notification') {
+							try {
+								// Get all users from the User table (Prisma model)
+								const users = await this.prisma.user.findMany({
+									select: {
+										id: true,
+									},
+								})
+
+								console.log(`[WiringExecutor] Workspace ${workspace.id}: Found ${users.length} users for notifications`)
+
+								if (users.length === 0) {
+									console.warn(`[WiringExecutor] Workspace ${workspace.id}: No users found - skipping notification creation`)
+									errors.push('No users found for notification creation')
+									continue
+								}
+
+								// Execute for each user
+								let userSuccessCount = 0
+								for (const user of users) {
+									try {
+										const result = await this.executeEvent(
+											event,
+											eventNodeConfig,
+											triggerData,
+											user.id, // User ID for notification creation
+											false, // isTest = false for real execution
+											undefined // eventContext
+										)
+										console.log(`[WiringExecutor] Workspace ${workspace.id}: Event ${eventId} executed for user ${user.id}`)
+										userSuccessCount++
+									} catch (userError: any) {
+										console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to execute event ${eventId} for user ${user.id}:`, userError)
+										errors.push(`Failed for user ${user.id}: ${userError.message}`)
+										// Continue with other users even if one fails
+									}
+								}
+
+								if (userSuccessCount > 0) {
+									executedCount++
+									console.log(`[WiringExecutor] Workspace ${workspace.id}: Created notifications for ${userSuccessCount}/${users.length} users`)
+								}
+							} catch (userQueryError: any) {
+								console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to query users:`, userQueryError)
+								errors.push(`Failed to query users: ${userQueryError.message}`)
+							}
+						} else {
+							// For other event types, execute once (they don't need user context)
+							const result = await this.executeEvent(
+								event,
+								eventNodeConfig,
+								triggerData,
+								undefined, // No specific user
+								false, // isTest = false for real execution
+								undefined // eventContext
+							)
+							console.log(`[WiringExecutor] Workspace ${workspace.id}: Event ${eventId} executed successfully`, result)
+							executedCount++
+						}
+					} catch (error: any) {
+						console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to execute event ${eventId}:`, error)
+						errors.push(
+							`Failed to execute event ${eventId}: ${error.message}`
+						)
+					}
+				}
+
+				results.push({
+					workspaceId: workspace.id,
+					success: errors.length === 0,
+					executedEvents: executedCount,
+					errors: errors.length > 0 ? errors : undefined,
+				})
+			} catch (error: any) {
+				results.push({
+					workspaceId: workspace.id,
+					success: false,
+					executedEvents: 0,
+					errors: [error.message || 'Unknown error'],
+				})
+			}
+		}
+
+		return results
 	}
 }

@@ -354,7 +354,25 @@ router.post('/register/auto', async (req, res) => {
 			},
 		})
 
-		// Create notification if device came online (new device or was offline)
+		// Trigger wiring-based triggers if device came online (new device or was offline)
+		// This should happen regardless of whether the legacy notification creation succeeds
+		if (isNewDevice || wasOffline) {
+			try {
+				await handleDeviceOnlineEvent(device.id, {
+					device_id: device.id,
+					hostname: device.hostname,
+					device_id_string: device.device_id,
+					ip: device.current_ip,
+					registration_method: device.registration_method,
+				})
+			} catch (eventError) {
+				// Log but don't fail - event listeners are optional
+				console.error('Failed to handle device online event:', eventError)
+			}
+		}
+
+		// Create legacy notification if device came online (new device or was offline)
+		// This is kept for backward compatibility but may fail if the method is deprecated
 		if (isNewDevice || wasOffline) {
 			try {
 				const notificationService = new NotificationService(prisma)
@@ -380,24 +398,11 @@ router.post('/register/auto', async (req, res) => {
 					// Log broadcast error but don't fail registration
 					console.error('Failed to broadcast device update:', broadcastError)
 				}
-
-				// Trigger notification event listeners for user-based notifications
-				try {
-					await handleDeviceOnlineEvent(device.id, {
-						device_id: device.id,
-						hostname: device.hostname,
-						device_id_string: device.device_id,
-						ip: device.current_ip,
-						registration_method: device.registration_method,
-					})
-				} catch (eventError) {
-					// Log but don't fail - event listeners are optional
-					console.error('Failed to handle device online event:', eventError)
-				}
 			} catch (notificationError) {
 				// Log notification error but don't fail registration
+				// The wiring executor will handle notifications via show_notification events
 				console.error(
-					'Failed to create online notification:',
+					'Failed to create legacy online notification:',
 					notificationError
 				)
 				// Still broadcast device update even if notification fails
@@ -696,7 +701,26 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 			},
 		})
 
-		// Create notification if device came online (was previously offline)
+		// Trigger wiring-based triggers if device came online (was previously offline)
+		// This should happen regardless of whether the legacy notification creation succeeds
+		if (wasOffline) {
+			try {
+				await handleDeviceOnlineEvent(device.id, {
+					device_id: device.id,
+					hostname: device.hostname,
+					device_id_string: device.device_id,
+					ip: device.current_ip,
+					uptime: data.uptime,
+					version: data.version,
+				})
+			} catch (eventError) {
+				// Log but don't fail - event listeners are optional
+				console.error('Failed to handle device online event:', eventError)
+			}
+		}
+
+		// Create legacy notification if device came online (was previously offline)
+		// This is kept for backward compatibility but may fail if the method is deprecated
 		let notification = null
 		if (wasOffline) {
 			try {
@@ -713,25 +737,11 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 						},
 					}
 				)
-
-				// Trigger notification event listeners for user-based notifications
-				try {
-					await handleDeviceOnlineEvent(device.id, {
-						device_id: device.id,
-						hostname: device.hostname,
-						device_id_string: device.device_id,
-						ip: device.current_ip,
-						uptime: data.uptime,
-						version: data.version,
-					})
-				} catch (eventError) {
-					// Log but don't fail - event listeners are optional
-					console.error('Failed to handle device online event:', eventError)
-				}
 			} catch (notificationError) {
 				// Log notification error but don't fail heartbeat
+				// The wiring executor will handle notifications via show_notification events
 				console.error(
-					'Failed to create online notification:',
+					'Failed to create legacy online notification:',
 					notificationError
 				)
 			}
