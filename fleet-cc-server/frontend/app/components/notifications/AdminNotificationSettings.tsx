@@ -10,22 +10,24 @@ export default function AdminNotificationSettings() {
 		<div className={styles.container}>
 			<div className={styles.header}>
 				<h2>Message Management</h2>
-				<p className={styles.description}>
-					Configure notifications and messages for the system.
-					Notifications define what kinds of notifications can be
-					sent. Messages (like emails) can be used in wiring actions
-					and support variable templating.
-				</p>
 			</div>
 
 			<div className={styles.content}>
 				<div className={styles.section}>
 					<h3>Notifications</h3>
+					<p className={styles.sectionDescription}>
+						Notifications define what kinds of notifications can be
+						sent.
+					</p>
 					<NotificationTypeManager />
 				</div>
 
 				<div className={styles.section}>
 					<h3>Messages</h3>
+					<p className={styles.sectionDescription}>
+						Messages (like emails) can be used in wiring actions
+						and support variable templating.
+					</p>
 					<MessageManager />
 				</div>
 			</div>

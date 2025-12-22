@@ -1,19 +1,11 @@
+@import '../admin/_mixins';
+
 .container {
-	padding: 20px;
+	padding: 0;
 }
 
 .header {
-	margin-bottom: 24px;
-
-	h2 {
-		margin: 0 0 8px 0;
-		font-size: 1.5rem;
-	}
-
-	.description {
-		color: #666;
-		margin: 0;
-	}
+	@include management-header;
 }
 
 .content {
@@ -24,9 +16,16 @@
 
 .section {
 	h3 {
-		margin: 0 0 16px 0;
+		margin: 0 0 8px 0;
 		font-size: 1.25rem;
-		color: #333;
+		color: var(--text-primary);
+		font-weight: 600;
+	}
+
+	.sectionDescription {
+		margin: 0 0 16px 0;
+		color: var(--text-secondary);
+		font-size: 0.9375rem;
 	}
 
 	.info {
