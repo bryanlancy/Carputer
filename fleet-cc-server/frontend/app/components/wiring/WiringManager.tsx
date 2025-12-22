@@ -465,13 +465,11 @@ export default function WiringManager() {
 				}
 			})
 
-			// Check for deleted nodes
-			;(saved.nodes || []).forEach((savedNode: any) => {
-				if (!currentNodes.find(n => n.id === savedNode.id)) {
-					// Node was deleted - this is a change but we don't need to mark it
-					// as the node no longer exists
-				}
-			})
+			// Check for deleted nodes - compare by ID sets for more reliable detection
+			const savedNodeIds = new Set((saved.nodes || []).map((n: any) => n.id))
+			const currentNodeIds = new Set(currentNodes.map((n: any) => n.id))
+			const nodesDeleted = savedNodeIds.size > currentNodeIds.size ||
+				Array.from(savedNodeIds).some(id => !currentNodeIds.has(id))
 
 			// Compare edges
 			const edgesChanged =
@@ -501,7 +499,7 @@ export default function WiringManager() {
 			}
 
 		setNodesWithChanges(changedNodeIds)
-		setHasPendingChanges(changedNodeIds.size > 0 || edgesChanged)
+		setHasPendingChanges(changedNodeIds.size > 0 || edgesChanged || nodesDeleted)
 		},
 		[]
 	)

@@ -93,6 +93,8 @@ export default function WiringCanvas({
 	const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges)
 	// Use internal ref to track latest nodes for validation (separate from prop nodesRef)
 	const internalNodesRef = useRef(nodes)
+	// Use internal ref to track latest edges for change detection
+	const internalEdgesRef = useRef(edges)
 
 	// Store workspaceId in a ref so nodeTypes can access it without causing re-renders
 	const workspaceIdRef = useRef(workspaceId)
@@ -257,17 +259,14 @@ export default function WiringCanvas({
 	// Validate all edges and mark invalid ones
 	const validateAllEdges = useCallback(() => {
 		setEdges(eds => {
-			return eds.map(edge => {
+			// First, filter out orphaned edges (edges that reference non-existent nodes)
+			const validEdges = eds.filter(edge => {
 				// Extract trigger and event IDs from node IDs
 				const triggerMatch = edge.source.match(/^trigger-(\d+)/)
 				const eventMatch = edge.target.match(/^event-(\d+)/)
 
 				if (!triggerMatch || !eventMatch) {
-					return {
-						...edge,
-						style: { stroke: '#ef4444' },
-						animated: false,
-					}
+					return false // Remove edges with invalid node ID format
 				}
 
 				const triggerId = parseInt(triggerMatch[1])
@@ -275,18 +274,37 @@ export default function WiringCanvas({
 
 				const trigger = triggers.find(t => t.id === triggerId)
 				// Use internalNodesRef to get the latest nodes state (including config changes)
+				const sourceNode = internalNodesRef.current.find(
+					n => n.id === edge.source
+				)
 				const eventNode = internalNodesRef.current.find(
 					n => n.id === edge.target
 				)
 				const event = events.find(e => e.id === eventId)
 
-				if (!trigger || !event || !eventNode) {
-					return {
-						...edge,
-						style: { stroke: '#ef4444' },
-						animated: false,
-					}
+				// Remove edges that reference non-existent nodes
+				if (!trigger || !event || !sourceNode || !eventNode) {
+					return false
 				}
+
+				return true
+			})
+
+			// Then validate the remaining edges
+			return validEdges.map(edge => {
+				// Extract trigger and event IDs from node IDs
+				const triggerMatch = edge.source.match(/^trigger-(\d+)/)
+				const eventMatch = edge.target.match(/^event-(\d+)/)
+
+				const triggerId = parseInt(triggerMatch![1])
+				const eventId = parseInt(eventMatch![1])
+
+				const trigger = triggers.find(t => t.id === triggerId)!
+				// Use internalNodesRef to get the latest nodes state (including config changes)
+				const eventNode = internalNodesRef.current.find(
+					n => n.id === edge.target
+				)!
+				const event = events.find(e => e.id === eventId)!
 
 				// Get effective event schema based on node configuration
 				let effectiveEvent = event
@@ -392,19 +410,24 @@ export default function WiringCanvas({
 		}
 		// Trigger validation when nodes change (including config changes)
 		// This ensures validation runs when node configs are updated via updateNodeConfig
-		if (edges.length > 0) {
-			const timeoutId = setTimeout(() => {
-				validateAllEdges()
-			}, 100)
-			return () => clearTimeout(timeoutId)
-		}
+		// Always validate, even if edges.length is 0, to clear invalid state
+		const timeoutId = setTimeout(() => {
+			validateAllEdges()
+		}, 100)
+		return () => clearTimeout(timeoutId)
 	}, [nodes, edges.length, validateAllEdges, nodesRef])
 
 	useEffect(() => {
+		internalEdgesRef.current = edges
 		if (edgesRef) {
 			edgesRef.current = edges
 		}
-	}, [edges, edgesRef])
+		// Trigger validation when edges change to clean up any orphaned edges
+		const timeoutId = setTimeout(() => {
+			validateAllEdges()
+		}, 100)
+		return () => clearTimeout(timeoutId)
+	}, [edges, edgesRef, validateAllEdges])
 
 	// Check for invalid edges and notify parent
 	useEffect(() => {
@@ -462,11 +485,18 @@ export default function WiringCanvas({
 	const handleEdgesChange = useCallback(
 		(changes: any) => {
 			onEdgesChangeInternal(changes)
-			if (onEdgesChange) {
-				onEdgesChange(edges)
-			}
+			// Use a timeout to ensure edges state has updated before notifying parent
+			// Use internalEdgesRef which gets updated in the useEffect above
+			setTimeout(() => {
+				if (onEdgesChange) {
+					const currentEdges = internalEdgesRef.current
+					if (currentEdges) {
+						onEdgesChange(currentEdges)
+					}
+				}
+			}, 100)
 		},
-		[edges, onEdgesChange, onEdgesChangeInternal]
+		[onEdgesChange, onEdgesChangeInternal]
 	)
 
 	// Handle node context menu
@@ -502,21 +532,61 @@ export default function WiringCanvas({
 		if (!contextMenu) return
 
 		if (contextMenu.type === 'node' && contextMenu.nodeId) {
-			setNodes(nds => nds.filter(n => n.id !== contextMenu.nodeId))
+			const nodeIdToDelete = contextMenu.nodeId
+			// Capture current state before deletion
+			const currentNodes = [...nodes]
+			const currentEdges = [...edges]
+
+			// Update state
+			setNodes(nds => nds.filter(n => n.id !== nodeIdToDelete))
 			// Also remove connected edges
 			setEdges(eds =>
 				eds.filter(
 					e =>
-						e.source !== contextMenu.nodeId &&
-						e.target !== contextMenu.nodeId
+						e.source !== nodeIdToDelete &&
+						e.target !== nodeIdToDelete
 				)
 			)
+
+			// Calculate updated state immediately
+			const updatedNodes = currentNodes.filter(n => n.id !== nodeIdToDelete)
+			const updatedEdges = currentEdges.filter(
+				e =>
+					e.source !== nodeIdToDelete &&
+					e.target !== nodeIdToDelete
+			)
+
+			// Manually notify parent (direct setNodes doesn't trigger React Flow's onNodesChange)
+			// Use a small timeout to ensure state has been processed
+			setTimeout(() => {
+				if (onNodesChange) {
+					onNodesChange(updatedNodes)
+				}
+				if (onEdgesChange) {
+					onEdgesChange(updatedEdges)
+				}
+			}, 50)
 		} else if (contextMenu.type === 'edge' && contextMenu.edgeId) {
-			setEdges(eds => eds.filter(e => e.id !== contextMenu.edgeId))
+			const edgeIdToDelete = contextMenu.edgeId
+			// Capture current state before deletion
+			const currentEdges = [...edges]
+
+			// Update state
+			setEdges(eds => eds.filter(e => e.id !== edgeIdToDelete))
+
+			// Calculate updated state immediately
+			const updatedEdges = currentEdges.filter(e => e.id !== edgeIdToDelete)
+
+			// Manually notify parent
+			setTimeout(() => {
+				if (onEdgesChange) {
+					onEdgesChange(updatedEdges)
+				}
+			}, 50)
 		}
 
 		setContextMenu(null)
-	}, [contextMenu, setNodes, setEdges])
+	}, [contextMenu, setNodes, setEdges, nodes, edges, onNodesChange, onEdgesChange])
 
 	// Validate connection before allowing it
 	const onConnect = useCallback(
@@ -693,3 +763,4 @@ export default function WiringCanvas({
 		</div>
 	)
 }
+
