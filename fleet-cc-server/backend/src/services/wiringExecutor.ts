@@ -6,6 +6,7 @@ import { NotificationService } from './notification'
 import { TagService } from './tagService'
 import { generateFakeDataFromSchema } from '../utils/fakeDataGenerator'
 import { TemplateService } from './template'
+import { broadcastNotificationToUser } from '../routes/realtime'
 
 /**
  * Wiring Executor Service
@@ -29,6 +30,7 @@ export class WiringExecutorService {
 	 * @param testData - Optional test data (will be generated from trigger schema if not provided)
 	 * @param userId - User ID to scope test actions to (notifications/emails only go to this user)
 	 * @param isTest - Whether this is a test execution (defaults to true for this method)
+	 * @param nodeConfig - Optional node_config to use current frontend selections instead of saved config
 	 * @returns Execution results
 	 */
 	async executeTrigger(
@@ -36,7 +38,8 @@ export class WiringExecutorService {
 		triggerId: number,
 		testData?: any,
 		userId?: string,
-		isTest: boolean = true
+		isTest: boolean = true,
+		nodeConfig?: any
 	): Promise<{
 		trigger: any
 		executedEvents: Array<{
@@ -59,7 +62,12 @@ export class WiringExecutorService {
 		// Generate test data if not provided
 		let triggerData = testData
 		if (!triggerData && trigger.output_schema) {
-			triggerData = generateFakeDataFromSchema(trigger.output_schema)
+			triggerData = generateFakeDataFromSchema(
+				trigger.output_schema,
+				undefined,
+				trigger.trigger_code,
+				trigger.trigger_name
+			)
 		} else if (!triggerData) {
 			// Default test data
 			triggerData = {
@@ -114,7 +122,8 @@ export class WiringExecutorService {
 		)
 
 		// Get node configs for effective event schemas
-		const nodeConfigs = (wiring.node_config as any) || {}
+		// Use provided node_config (current frontend selections) if available, otherwise use saved config
+		const nodeConfigs = nodeConfig || (wiring.node_config as any) || {}
 
 		// Execute each connected event
 		const executedEvents: Array<{
@@ -320,6 +329,9 @@ export class WiringExecutorService {
 
 	/**
 	 * Execute show_notification event
+	 * Uses the selected notification from the dropdown if configured,
+	 * otherwise creates a default test notification.
+	 * The test simulates the entire chain using the test data from the trigger.
 	 */
 	private async executeShowNotification(
 		event: any,
@@ -329,17 +341,73 @@ export class WiringExecutorService {
 		isTest: boolean = true,
 		eventContext?: { tags: Set<number> }
 	): Promise<any> {
-		if (!nodeConfig?.notification_id) {
-			throw new Error('Notification ID not configured for this event')
-		}
-
 		if (!userId) {
 			throw new Error('User ID required for test notifications')
 		}
 
-		const notificationId = parseInt(nodeConfig.notification_id)
+		let notificationId: number
 
-		// Create the notification first
+		// PRIORITY: Always use the selected notification from the dropdown if configured
+		// This ensures the test uses the actual notification template that will be used in production
+		if (nodeConfig?.notification_id) {
+			notificationId = parseInt(nodeConfig.notification_id)
+
+			// Verify the notification exists and is enabled
+			const selectedNotification = await this.prisma.notification.findUnique({
+				where: { id: notificationId },
+			})
+
+			if (!selectedNotification) {
+				throw new Error(
+					`Selected notification ${notificationId} not found. Please select a valid notification.`
+				)
+			}
+
+			if (!selectedNotification.enabled) {
+				throw new Error(
+					`Selected notification "${selectedNotification.name}" is disabled. Please enable it or select a different notification.`
+				)
+			}
+		} else {
+			// Fallback: For testing without a configured notification_id, create or get a default test notification
+			// This allows testing the show_notification action without requiring configuration
+			const defaultNotification = await this.notificationService.getOrCreateNotification(
+				'Test Notification',
+				{
+					description: 'Default notification for testing wiring configurations',
+					priority: 0,
+					enabled: true,
+				}
+			)
+			notificationId = defaultNotification.id
+
+			// If the default notification doesn't have a message template, set a simple one
+			if (!defaultNotification.message_template) {
+				// Generate a simple message from trigger data
+				let message = 'Test notification'
+				if (triggerData?.device?.device_id) {
+					message = `Test notification for device ${triggerData.device.device_id}`
+				} else if (triggerData?.device?.hostname) {
+					message = `Test notification for ${triggerData.device.hostname}`
+				}
+
+				// Update the notification template with a simple message
+				await this.prisma.notification.update({
+					where: { id: notificationId },
+					data: {
+						message_template: message,
+					},
+				})
+			}
+		}
+
+		// Create the test notification using the selected/default notification template
+		// This simulates the entire chain: trigger data -> notification template rendering -> user notification
+		// The createTestNotificationForUser method will:
+		// 1. Use the notification template (with its message_template and variable_schema)
+		// 2. Render the template with the trigger test data
+		// 3. Create a UserNotification instance
+		// 4. Apply tags from the context
 		const result =
 			await this.notificationService.createTestNotificationForUser(
 				userId,
@@ -375,6 +443,28 @@ export class WiringExecutorService {
 					)
 				}
 			}
+		}
+
+		// Broadcast notification via WebSocket to the user (same as test endpoint)
+		try {
+			broadcastNotificationToUser(userId, {
+				id: result.id,
+				notification_id: result.notification_id,
+				name: result.notification.name,
+				message: result.rendered_message,
+				notification_type: result.notification.notification_type,
+				viewed: result.viewed,
+				viewed_at: result.viewed_at,
+				created_at: result.created_at,
+				tags: result.tags,
+				show_popup: result.notification.show_popup,
+			})
+		} catch (wsError) {
+			// Log but don't fail the request if WebSocket broadcast fails
+			console.error(
+				'Failed to broadcast test notification via WebSocket:',
+				wsError
+			)
 		}
 
 		return result

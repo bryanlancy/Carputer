@@ -164,14 +164,15 @@
 	font-size: 14px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: background 0.2s;
+	transition: all 0.2s;
 
 	&:hover:not(:disabled) {
 		background: #2563eb;
 	}
 
 	&:disabled {
-		opacity: 0.5;
+		background: #9ca3af;
+		opacity: 0.6;
 		cursor: not-allowed;
 	}
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import WiringCanvas from './WiringCanvas'
@@ -72,6 +72,9 @@ export default function WiringManager() {
 	const [newWorkspaceName, setNewWorkspaceName] = useState('')
 	const nodesRef = useRef<Node[] | null>(null)
 	const edgesRef = useRef<Edge[] | null>(null)
+	const [hasPendingChanges, setHasPendingChanges] = useState(false)
+	const [nodesWithChanges, setNodesWithChanges] = useState<Set<string>>(new Set())
+	const savedConfigRef = useRef<WiringConfiguration | null>(null)
 
 	useEffect(() => {
 		loadWorkspaces()
@@ -290,35 +293,53 @@ export default function WiringManager() {
 			if (response.ok) {
 				const data = await response.json()
 				if (data.wiring) {
-					setWiringConfig({
-						nodes: data.wiring.nodes || [],
-						edges: data.wiring.edges || [],
-						viewport: data.wiring.viewport,
-					})
+				const config = {
+					nodes: data.wiring.nodes || [],
+					edges: data.wiring.edges || [],
+					viewport: data.wiring.viewport,
+					node_config: data.wiring.node_config || null,
+				}
+				setWiringConfig(config)
+				savedConfigRef.current = config
+				setHasPendingChanges(false)
+				setNodesWithChanges(new Set())
 				} else {
 					// Start with empty config
-					setWiringConfig({
+					const config = {
 						nodes: [],
 						edges: [],
 						viewport: null,
-					})
+						node_config: null,
+					}
+					setWiringConfig(config)
+					savedConfigRef.current = config
+					setHasPendingChanges(false)
 				}
 			} else {
 				// Start with empty config if no wiring exists
-				setWiringConfig({
+				const config = {
 					nodes: [],
 					edges: [],
 					viewport: null,
-				})
+					node_config: null,
+				}
+				setWiringConfig(config)
+				savedConfigRef.current = config
+				setHasPendingChanges(false)
+				setNodesWithChanges(new Set())
 			}
 		} catch (err: any) {
 			console.error('Failed to load wiring config:', err)
 			// Start with empty config on error
-			setWiringConfig({
+			const config = {
 				nodes: [],
 				edges: [],
 				viewport: null,
-			})
+				node_config: null,
+			}
+			setWiringConfig(config)
+			savedConfigRef.current = config
+			setHasPendingChanges(false)
 		}
 	}
 
@@ -343,10 +364,22 @@ export default function WiringManager() {
 			const apiUrl = getApiUrl()
 
 			// Get current nodes and edges from the canvas refs
+			const nodes = nodesRef.current || wiringConfig?.nodes || []
+			const edges = edgesRef.current || wiringConfig?.edges || []
+
+			// Extract node_config from nodes (node-specific configurations like notification_id, message_code, command)
+			const nodeConfig: Record<string, any> = {}
+			nodes.forEach((node: any) => {
+				if (node.data?.config && Object.keys(node.data.config).length > 0) {
+					nodeConfig[node.id] = node.data.config
+				}
+			})
+
 			const configToSave = {
-				nodes: nodesRef.current || wiringConfig?.nodes || [],
-				edges: edgesRef.current || wiringConfig?.edges || [],
+				nodes,
+				edges,
 				viewport: wiringConfig?.viewport,
+				node_config: Object.keys(nodeConfig).length > 0 ? nodeConfig : null,
 			}
 
 			const response = await authenticatedFetch(
@@ -364,6 +397,11 @@ export default function WiringManager() {
 			if (response.ok) {
 				setSuccess('Wiring configuration saved successfully')
 				setTimeout(() => setSuccess(null), 3000)
+				// Update saved config ref and clear pending changes
+				savedConfigRef.current = configToSave
+				setHasPendingChanges(false)
+				// Reload to get the updated config from server
+				await loadWiringConfig(selectedWorkspaceId)
 			} else {
 				const errorData = await response.json()
 				setError(
@@ -378,18 +416,111 @@ export default function WiringManager() {
 		}
 	}
 
-	const handleNodesChange = (nodes: Node[]) => {
-		setWiringConfig(prev => ({
-			...prev!,
-			nodes,
-		}))
-	}
+	// Check if there are pending changes by comparing current state with saved state
+	const checkForPendingChanges = useCallback(
+		(currentNodes: Node[], currentEdges: Edge[]) => {
+			const saved = savedConfigRef.current
+			if (!saved) {
+				setHasPendingChanges(false)
+				setNodesWithChanges(new Set())
+				return
+			}
+
+			// Extract current node_config
+			const currentNodeConfig: Record<string, any> = {}
+			currentNodes.forEach((node: any) => {
+				if (node.data?.config && Object.keys(node.data.config).length > 0) {
+					currentNodeConfig[node.id] = node.data.config
+				}
+			})
+
+			// Create a map of saved nodes by ID for quick lookup
+			const savedNodesMap = new Map(
+				(saved.nodes || []).map((n: any) => [n.id, n])
+			)
+
+			// Track which nodes have changes
+			const changedNodeIds = new Set<string>()
+
+			// Check each current node for changes
+			currentNodes.forEach((node: any) => {
+				const savedNode = savedNodesMap.get(node.id)
+				if (!savedNode) {
+					// New node
+					changedNodeIds.add(node.id)
+				} else {
+					// Check if position changed
+					if (
+						savedNode.position?.x !== node.position?.x ||
+						savedNode.position?.y !== node.position?.y
+					) {
+						changedNodeIds.add(node.id)
+					}
+					// Check if config changed
+					const savedConfig = saved.node_config?.[node.id] || {}
+					const currentConfig = node.data?.config || {}
+					if (JSON.stringify(savedConfig) !== JSON.stringify(currentConfig)) {
+						changedNodeIds.add(node.id)
+					}
+				}
+			})
+
+			// Check for deleted nodes
+			;(saved.nodes || []).forEach((savedNode: any) => {
+				if (!currentNodes.find(n => n.id === savedNode.id)) {
+					// Node was deleted - this is a change but we don't need to mark it
+					// as the node no longer exists
+				}
+			})
+
+			// Compare edges
+			const edgesChanged =
+				JSON.stringify(
+					currentEdges.map(e => ({
+						id: e.id,
+						source: e.source,
+						target: e.target,
+						data: e.data,
+					}))
+				) !==
+				JSON.stringify(
+					(saved.edges || []).map((e: any) => ({
+						id: e.id,
+						source: e.source,
+						target: e.target,
+						data: e.data,
+					}))
+				)
+
+			// If edges changed, mark all connected nodes as changed
+			if (edgesChanged) {
+				currentEdges.forEach(edge => {
+					changedNodeIds.add(edge.source)
+					changedNodeIds.add(edge.target)
+				})
+			}
+
+		setNodesWithChanges(changedNodeIds)
+		setHasPendingChanges(changedNodeIds.size > 0 || edgesChanged)
+		},
+		[]
+	)
+
+	const handleNodesChange = useCallback((nodes: Node[]) => {
+		// Update nodes ref immediately for change detection
+		nodesRef.current = nodes
+		// Don't update wiringConfig state here - it causes re-renders that trigger loops
+		// The nodes are already tracked in nodesRef, and we can read from there when needed
+		// Only check for pending changes
+		checkForPendingChanges(nodes, edgesRef.current || [])
+	}, [checkForPendingChanges])
 
 	const handleEdgesChange = (edges: Edge[]) => {
 		setWiringConfig(prev => ({
 			...prev!,
 			edges,
 		}))
+		checkForPendingChanges(nodesRef.current || [], edges)
 	}
 
 	if (loading) {
@@ -509,6 +640,8 @@ export default function WiringManager() {
 								edgesRef={edgesRef}
 								onValidationChange={setHasInvalidConnections}
 								workspaceId={selectedWorkspaceId}
+								nodesRefForTest={nodesRef}
+								nodesWithChanges={nodesWithChanges}
 							/>
 						</div>
 						<ActionSidebar
@@ -532,8 +665,15 @@ export default function WiringManager() {
 						)}
 						<button
 							onClick={saveWiringConfig}
-							disabled={saving || hasInvalidConnections}
-							className={styles.saveButton}>
+							disabled={saving || hasInvalidConnections || !hasPendingChanges}
+							className={styles.saveButton}
+							title={
+								!hasPendingChanges
+									? 'No changes to save'
+									: hasInvalidConnections
+									? 'Fix invalid connections before saving'
+									: 'Save configuration'
+							}>
 							{saving ? 'Saving...' : 'Save Configuration'}
 						</button>
 					</div>

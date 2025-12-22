@@ -48,9 +48,9 @@ export function generateFakeDataFromSchema(
 	}
 
 	if (type === 'string') {
-		// Check for date-time format - return Date object instead of string
+		// Check for date-time format - return ISO string
 		if (schema.format === 'date-time' || schema.format === 'date') {
-			return new Date()
+			return new Date().toISOString()
 		}
 		return generateString(schema, propertyName)
 	}
@@ -315,7 +315,7 @@ function generateString(schema: any, propertyName?: string): string {
 		return schema.enum[0]
 	}
 
-	// Check for format (date-time is handled at type level, so skip it here)
+	// Check for format
 	if (schema.format === 'email') {
 		return 'test@example.com'
 	}
@@ -383,13 +383,13 @@ function generateDefaultValue(propertyName?: string): any {
 
 	const lowerName = propertyName.toLowerCase()
 
-	// Timestamp-related - always return Date object
+	// Timestamp-related
 	if (
 		lowerName.includes('timestamp') ||
 		lowerName.includes('date') ||
 		lowerName.includes('time')
 	) {
-		return new Date()
+		return new Date().toISOString()
 	}
 
 	// Device-related
@@ -426,63 +426,4 @@ function generateDefaultValue(propertyName?: string): any {
 	}
 
 	return null
-}
-
-/**
- * Generate fake data for a flat path (e.g., "device.hostname")
- * This is used when we have a variable path but need to generate the full object structure
- */
-export function generateFakeDataForPath(path: string): any {
-	const parts = path.split('.')
-	const result: any = {}
-
-	if (parts.length === 0) {
-		return generateDefaultValue(path)
-	}
-
-	// Build nested structure
-	let current = result
-	for (let i = 0; i < parts.length; i++) {
-		const part = parts[i]
-		const isLast = i === parts.length - 1
-
-		if (isLast) {
-			// Last part gets a value
-			current[part] = generateDefaultValue(part)
-		} else {
-			// Intermediate parts get objects
-			current[part] = {}
-			current = current[part]
-		}
-	}
-
-	// Fill in common device structure if device is in path
-	if (path.includes('device')) {
-		if (!result.device) {
-			result.device = {}
-		}
-		result.device = {
-			id: 1,
-			device_id: 'DEV-001',
-			hostname: 'test-device',
-			status: 'online',
-			current_ip: '192.168.1.100',
-			...result.device,
-		}
-	}
-
-	// Fill in common user structure if user is in path
-	if (path.includes('user')) {
-		if (!result.user) {
-			result.user = {}
-		}
-		result.user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			name: 'Test User',
-			...result.user,
-		}
-	}
-
-	return result
 }

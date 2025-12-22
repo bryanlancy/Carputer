@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { extractDataTypes } from '../../utils/dataTypeExtractor'
 import { DataTypeIcons } from '../../utils/dataTypeIcons'
 import styles from './ActionSidebar.module.scss'
@@ -24,15 +24,28 @@ export default function ActionSidebar({
 	actions,
 	onDragStart,
 }: ActionSidebarProps) {
+	const [collapsed, setCollapsed] = useState(false)
 	const enabledActions = actions.filter(a => a.enabled)
 
 	return (
-		<div className={styles.sidebar}>
+		<div className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
 			<div className={styles.header}>
-				<h3>Actions</h3>
-				<p className={styles.description}>Drag actions to the canvas</p>
+				<div className={styles.headerContent}>
+					<h3>Actions</h3>
+					<button
+						onClick={() => setCollapsed(!collapsed)}
+						className={styles.collapseButton}
+						title={collapsed ? 'Expand' : 'Collapse'}
+						aria-label={collapsed ? 'Expand' : 'Collapse'}>
+						{collapsed ? '◀' : '▶'}
+					</button>
+				</div>
+				{!collapsed && (
+					<p className={styles.description}>Drag actions to the canvas</p>
+				)}
 			</div>
-			<div className={styles.list}>
+			{!collapsed && (
+				<div className={styles.list}>
 				{enabledActions.length === 0 ? (
 					<div className={styles.empty}>No actions available</div>
 				) : (
@@ -88,7 +101,8 @@ export default function ActionSidebar({
 						)
 					})
 				)}
-			</div>
+				</div>
+			)}
 		</div>
 	)
 }

@@ -301,12 +301,20 @@ router.post('/:workspaceId/triggers/:triggerId/test', async (req, res) => {
 			return res.status(401).json({ error: 'User not authenticated' })
 		}
 
-		// Execute trigger with test data
+		// Get test data and node_config from request body if provided
+		// node_config allows testing with current frontend selections before saving
+		const testData = req.body?.testData
+		const nodeConfig = req.body?.node_config
+
+		// Execute trigger with test data (will generate from schema if not provided)
+		// Pass node_config to use current frontend selections instead of saved config
 		const result = await executorService.executeTrigger(
 			workspaceId,
 			triggerId,
-			undefined, // Will generate from trigger schema
-			userId
+			testData, // Use provided test data or undefined to generate from schema
+			userId,
+			true, // isTest
+			nodeConfig // Use provided node_config or undefined to load from database
 		)
 
 		res.json(result)

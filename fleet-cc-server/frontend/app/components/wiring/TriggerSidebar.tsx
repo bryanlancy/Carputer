@@ -30,6 +30,7 @@ export default function TriggerSidebar({
 	const { session } = useAuth()
 	const [testingTriggerId, setTestingTriggerId] = useState<number | null>(null)
 	const [testResult, setTestResult] = useState<string | null>(null)
+	const [collapsed, setCollapsed] = useState(false)
 	const enabledTriggers = triggers.filter(t => t.enabled)
 
 	const handleTest = async (triggerId: number) => {
@@ -85,24 +86,37 @@ export default function TriggerSidebar({
 	}
 
 	return (
-		<div className={styles.sidebar}>
+		<div className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
 			<div className={styles.header}>
-				<h3>Triggers</h3>
-				<p className={styles.description}>
-					Drag triggers to the canvas
-				</p>
-			</div>
-			{testResult && (
-				<div className={styles.testResult}>
-					{testResult}
+				<div className={styles.headerContent}>
+					<h3>Triggers</h3>
 					<button
-						onClick={() => setTestResult(null)}
-						className={styles.dismissResult}>
-						×
+						onClick={() => setCollapsed(!collapsed)}
+						className={styles.collapseButton}
+						title={collapsed ? 'Expand' : 'Collapse'}
+						aria-label={collapsed ? 'Expand' : 'Collapse'}>
+						{collapsed ? '▶' : '◀'}
 					</button>
 				</div>
-			)}
-			<div className={styles.list}>
+				{!collapsed && (
+					<p className={styles.description}>
+						Drag triggers to the canvas
+					</p>
+				)}
+			</div>
+			{!collapsed && (
+				<>
+					{testResult && (
+						<div className={styles.testResult}>
+							{testResult}
+							<button
+								onClick={() => setTestResult(null)}
+								className={styles.dismissResult}>
+								×
+							</button>
+						</div>
+					)}
+					<div className={styles.list}>
 				{enabledTriggers.length === 0 ? (
 					<div className={styles.empty}>No triggers available</div>
 				) : (
@@ -140,7 +154,9 @@ export default function TriggerSidebar({
 						)
 					})
 				)}
-			</div>
+					</div>
+				</>
+			)}
 		</div>
 	)
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useEffect } from 'react'
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react'
 import ReactFlow, {
 	Node,
 	Edge,
@@ -64,6 +64,8 @@ export interface WiringCanvasProps {
 	edgesRef?: React.MutableRefObject<Edge[] | null>
 	onValidationChange?: (hasInvalidConnections: boolean) => void
 	workspaceId?: number | null
+	nodesRefForTest?: React.MutableRefObject<Node[] | null> // For passing current nodes to test
+	nodesWithChanges?: Set<string> // Nodes that have pending changes
 }
 
 // Define edgeTypes outside component
@@ -84,6 +86,8 @@ export default function WiringCanvas({
 	edgesRef,
 	onValidationChange,
 	workspaceId,
+	nodesRefForTest,
+	nodesWithChanges,
 }: WiringCanvasProps) {
 	const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes)
 	const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges)
@@ -96,17 +100,42 @@ export default function WiringCanvas({
 		workspaceIdRef.current = workspaceId
 	}, [workspaceId])
 
-	// Create nodeTypes with workspaceId - use useMemo to keep reference stable
+	// Store nodesWithChanges in a ref to avoid recreating nodeTypes
+	const nodesWithChangesRef = useRef<Set<string>>(new Set())
+
+	// Update ref when nodesWithChanges changes
+	useEffect(() => {
+		if (nodesWithChanges) {
+			nodesWithChangesRef.current = nodesWithChanges
+		} else {
+			nodesWithChangesRef.current = new Set()
+		}
+	}, [nodesWithChanges])
+
+	// Create nodeTypes with workspaceId and nodesRef - use useMemo to keep reference stable
 	// Access workspaceId via ref to avoid React Flow warning about unstable nodeTypes
+	// Use ref for nodesWithChanges to avoid recreating nodeTypes on every render
 	const nodeTypes = useMemo(
 		() => ({
 			trigger: (props: NodeProps<TriggerNodeData>) => (
-				<TriggerNode {...props} workspaceId={workspaceIdRef.current} />
+				<TriggerNode
+					{...props}
+					workspaceId={workspaceIdRef.current}
+					nodesRefForTest={nodesRefForTest}
+					hasPendingChanges={nodesWithChangesRef.current.has(props.id)}
+				/>
 			),
-			event: EventNode,
+			event: (props: NodeProps<EventNodeData>) => (
+				<EventNode
+					{...props}
+					hasPendingChanges={nodesWithChangesRef.current.has(props.id)}
+				/>
+			),
 		}),
-		[]
-	) // Empty deps array - workspaceId accessed via ref
+		// Only recreate when nodesRefForTest changes, not when nodesWithChanges changes
+		// We use a ref to access the current value without triggering recreation
+		[nodesRefForTest]
+	)
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
@@ -387,6 +416,9 @@ export default function WiringCanvas({
 		}
 	}, [edges, onValidationChange])
 
+	// Debounce timer ref for notifying parent
+	const notifyParentTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
 	// Handle node changes
 	const handleNodesChange = useCallback(
 		(changes: any) => {
@@ -396,13 +428,35 @@ export default function WiringCanvas({
 			setTimeout(() => {
 				validateAllEdges()
 			}, 150)
+
+			// Notify parent of node changes (debounced to avoid infinite loops)
+			// Only notify if onNodesChange is provided
+			if (onNodesChange) {
+				// Clear any pending notification
+				if (notifyParentTimeoutRef.current) {
+					clearTimeout(notifyParentTimeoutRef.current)
+				}
+				// Schedule notification after nodes state has updated
+				// Use internalNodesRef which gets updated in the useEffect above
+				notifyParentTimeoutRef.current = setTimeout(() => {
+					const currentNodes = internalNodesRef.current
+					if (currentNodes && onNodesChange) {
+						onNodesChange(currentNodes)
+					}
+				}, 300)
+			}
 		},
-		[onNodesChangeInternal, validateAllEdges]
+		[onNodesChangeInternal, validateAllEdges, onNodesChange]
 	)
 
-	// Don't automatically notify parent on every node change - this causes infinite loops
-	// Parent can read from nodesRef when needed (e.g., when saving)
-	// If parent needs updates, they should be debounced/throttled at the parent level
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (notifyParentTimeoutRef.current) {
+				clearTimeout(notifyParentTimeoutRef.current)
+			}
+		}
+	}, [])
 
 	// Handle edge changes
 	const handleEdgesChange = useCallback(
