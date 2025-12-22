@@ -271,8 +271,78 @@ export class TagService {
 
 	/**
 	 * Get all tags for an entity
+	 * For user_notifications, query parent notification tags to avoid duplication
 	 */
 	async getEntityTags(entityType: string, entityId: number): Promise<any[]> {
+		// Special handling for user_notifications - query parent notification tags
+		if (entityType === 'user_notification') {
+			// Get the user_notification to find its parent notification_id
+			const userNotification =
+				await this.prisma.userNotification.findUnique({
+					where: { id: entityId },
+					select: { notification_id: true },
+				})
+
+			if (!userNotification) {
+				return []
+			}
+
+			// Get direct tags on user_notification (e.g., test tags, instance-specific tags)
+			const directAssociations =
+				await this.prisma.tagAssociation.findMany({
+					where: {
+						entity_type: 'user_notification',
+						entity_id: entityId,
+					},
+					include: {
+						tag: true,
+					},
+				})
+
+			// Get tags from parent notification
+			const notificationAssociations =
+				await this.prisma.tagAssociation.findMany({
+					where: {
+						entity_type: 'notification',
+						entity_id: userNotification.notification_id,
+						inherited: false, // Only get direct tags from notification
+					},
+					include: {
+						tag: true,
+					},
+				})
+
+			// Combine direct tags and inherited notification tags
+			// Use a Map to deduplicate by tag ID
+			const tagMap = new Map<number, any>()
+
+			// Add direct tags (not inherited)
+			directAssociations.forEach(assoc => {
+				tagMap.set(assoc.tag.id, {
+					...assoc.tag,
+					inherited: assoc.inherited,
+					association_id: assoc.id,
+				})
+			})
+
+			// Add notification tags (marked as inherited if not already direct)
+			notificationAssociations.forEach(assoc => {
+				if (!tagMap.has(assoc.tag.id)) {
+					tagMap.set(assoc.tag.id, {
+						...assoc.tag,
+						inherited: true,
+						association_id: null,
+					})
+				}
+			})
+
+			// Return sorted by name
+			return Array.from(tagMap.values()).sort((a, b) =>
+				a.name.localeCompare(b.name)
+			)
+		}
+
+		// Standard handling for other entity types
 		const associations = await this.prisma.tagAssociation.findMany({
 			where: {
 				entity_type: entityType,

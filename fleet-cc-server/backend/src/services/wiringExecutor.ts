@@ -3,6 +3,7 @@ import { WiringService } from './wiring'
 import { TriggerService } from './trigger'
 import { EventService } from './event'
 import { NotificationService } from './notification'
+import { TagService } from './tagService'
 import { generateFakeDataFromSchema } from '../utils/fakeDataGenerator'
 import { TemplateService } from './template'
 
@@ -72,10 +73,30 @@ export class WiringExecutorService {
 			}
 		}
 
+		// Add test flag to trigger data
+		triggerData = {
+			...triggerData,
+			test: true,
+		}
+
+		// Load trigger tags for tag inheritance
+		const tagService = new TagService(this.prisma)
+		const triggerTags = await tagService.getEntityTags('trigger', triggerId)
+		const triggerTagIds = triggerTags.map(tag => tag.id)
+
+		// Create event context to track accumulating tags
+		const eventContext = {
+			tags: new Set<number>(triggerTagIds), // Start with trigger tags
+		}
+
 		// Get wiring configuration
-		const wiring = await this.wiringService.getWiringConfiguration(workspaceId)
+		const wiring = await this.wiringService.getWiringConfiguration(
+			workspaceId
+		)
 		if (!wiring || !wiring.edges || !wiring.nodes) {
-			throw new Error(`No wiring configuration found for workspace ${workspaceId}`)
+			throw new Error(
+				`No wiring configuration found for workspace ${workspaceId}`
+			)
 		}
 
 		// Find trigger node
@@ -213,6 +234,11 @@ export class WiringExecutorService {
 				continue
 			}
 
+			// Load event tags and merge into context
+			const eventTags = await tagService.getEntityTags('event', eventId)
+			const eventTagIds = eventTags.map(tag => tag.id)
+			eventTagIds.forEach(tagId => eventContext.tags.add(tagId))
+
 			// Execute event handler
 			try {
 				const result = await this.executeEvent(
@@ -220,7 +246,8 @@ export class WiringExecutorService {
 					eventNodeConfig,
 					triggerData,
 					userId,
-					isTest
+					isTest,
+					eventContext
 				)
 				executedEvents.push({
 					event,
@@ -250,22 +277,44 @@ export class WiringExecutorService {
 		nodeConfig: any,
 		triggerData: any,
 		userId?: string,
-		isTest: boolean = true
+		isTest: boolean = true,
+		eventContext?: { tags: Set<number> }
 	): Promise<any> {
 		switch (event.event_code) {
 			case 'show_notification':
-				return this.executeShowNotification(event, nodeConfig, triggerData, userId, isTest)
+				return this.executeShowNotification(
+					event,
+					nodeConfig,
+					triggerData,
+					userId,
+					isTest,
+					eventContext
+				)
 
 			case 'send_email':
-				return this.executeSendEmail(event, nodeConfig, triggerData, userId, isTest)
+				return this.executeSendEmail(
+					event,
+					nodeConfig,
+					triggerData,
+					userId,
+					isTest
+				)
 
 			case 'execute_command':
-				return this.executeCommand(event, nodeConfig, triggerData, isTest)
+				return this.executeCommand(
+					event,
+					nodeConfig,
+					triggerData,
+					isTest
+				)
 
 			default:
 				// Unknown event type - just log
 				console.log(`Unknown event type: ${event.event_code}`)
-				return { message: 'Event type not implemented', event_code: event.event_code }
+				return {
+					message: 'Event type not implemented',
+					event_code: event.event_code,
+				}
 		}
 	}
 
@@ -277,7 +326,8 @@ export class WiringExecutorService {
 		nodeConfig: any,
 		triggerData: any,
 		userId?: string,
-		isTest: boolean = true
+		isTest: boolean = true,
+		eventContext?: { tags: Set<number> }
 	): Promise<any> {
 		if (!nodeConfig?.notification_id) {
 			throw new Error('Notification ID not configured for this event')
@@ -288,13 +338,46 @@ export class WiringExecutorService {
 		}
 
 		const notificationId = parseInt(nodeConfig.notification_id)
-		// createTestNotificationForUser always creates test notifications with 'test' tag
-		// This ensures test notifications are marked and won't cause false positives
-		return this.notificationService.createTestNotificationForUser(
-			userId,
-			notificationId,
-			triggerData
-		)
+
+		// Create the notification first
+		const result =
+			await this.notificationService.createTestNotificationForUser(
+				userId,
+				notificationId,
+				triggerData
+			)
+
+		// Apply accumulated tags from event context (trigger + event tags)
+		if (eventContext && eventContext.tags.size > 0) {
+			const tagService = new TagService(this.prisma)
+			const contextTagIds = Array.from(eventContext.tags)
+
+			// Get notification template tags
+			const notificationTags = await tagService.getEntityTags(
+				'notification',
+				notificationId
+			)
+			const notificationTagIds = notificationTags.map(tag => tag.id)
+
+			// Merge context tags with notification tags (deduplicated)
+			const allTagIds = new Set([...contextTagIds, ...notificationTagIds])
+
+			// Apply tags to the user notification (only tags that aren't already on the notification template)
+			for (const tagId of allTagIds) {
+				// Only create tag associations for tags not already on the notification template
+				// (notification template tags are automatically inherited via getEntityTags query)
+				if (!notificationTagIds.includes(tagId)) {
+					await tagService.associateTag(
+						'user_notification',
+						result.id,
+						tagId,
+						false
+					)
+				}
+			}
+		}
+
+		return result
 	}
 
 	/**
@@ -374,4 +457,3 @@ export class WiringExecutorService {
 		}
 	}
 }
-

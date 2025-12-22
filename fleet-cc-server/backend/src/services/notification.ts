@@ -812,7 +812,9 @@ export class NotificationService {
 		// Get or create 'test' tag
 		const testTag = await tagService.getOrCreateTag('test')
 
-		// Associate 'test' tag with the user notification (not the notification template)
+		// Associate 'test' tag with the user notification (instance-specific tag)
+		// Note: Notification template tags are queried automatically via getEntityTags,
+		// so we only need to create instance-specific tags here
 		await tagService.associateTag(
 			'user_notification',
 			userNotification.id,
@@ -820,15 +822,7 @@ export class NotificationService {
 			false
 		)
 
-		// Inherit tags from notification template to user notification
-		await tagService.inheritTags(
-			'notification',
-			notificationId, // Source: template notification
-			'user_notification',
-			userNotification.id // Target: user notification
-		)
-
-		// Get all tags for the user notification
+		// Get all tags for the user notification (includes notification template tags via query)
 		const tags = await tagService.getEntityTags(
 			'user_notification',
 			userNotification.id

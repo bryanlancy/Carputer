@@ -1,6 +1,7 @@
 import express from 'express'
 import { z } from 'zod'
 import { NotificationService } from '../../services/notification'
+import { TagService } from '../../services/tagService'
 import { requireAuth } from '../../middleware/auth'
 import { requireAdmin } from '../../middleware/authorize'
 import { broadcastNotificationToUser } from '../realtime'
@@ -173,12 +174,13 @@ const createTypeSchema = z.object({
 	variable_schema: z.any().optional().nullable(),
 	show_in_feed: z.boolean().default(true),
 	show_popup: z.boolean().default(false),
+	tagIds: z.array(z.number().int()).optional().default([]),
 })
 
 router.post('/', async (req, res) => {
 	try {
 		const prisma = req.prisma
-		const notificationService = new NotificationService(prisma)
+		const tagService = new TagService(prisma)
 
 		const data = createTypeSchema.parse(req.body)
 
@@ -198,7 +200,30 @@ router.post('/', async (req, res) => {
 			},
 		})
 
-		res.json(type)
+		// Associate tags
+		if (data.tagIds && data.tagIds.length > 0) {
+			for (const tagId of data.tagIds) {
+				await tagService.associateTag(
+					'notification',
+					type.id,
+					tagId,
+					false
+				)
+			}
+		}
+
+		// Load tags for response
+		const tags = await tagService.getEntityTags('notification', type.id)
+		const typeWithTags = {
+			...type,
+			tags: tags.map(tag => ({
+				id: tag.id,
+				name: tag.name,
+				color: tag.color,
+			})),
+		}
+
+		res.json(typeWithTags)
 	} catch (error: any) {
 		if (error instanceof z.ZodError) {
 			res.status(400).json({
@@ -322,9 +347,9 @@ router.post('/:id/test', async (req, res) => {
 		// Create test notification for current user only
 		const testNotification =
 			await notificationService.createTestNotificationForUser(
-			userId,
-			notificationId
-		)
+				userId,
+				notificationId
+			)
 
 		// Broadcast notification via WebSocket to the user
 		try {
@@ -379,11 +404,13 @@ const updateTypeSchema = z.object({
 	variable_schema: z.any().optional().nullable(),
 	show_in_feed: z.boolean().optional(),
 	show_popup: z.boolean().optional(),
+	tagIds: z.array(z.number().int()).optional(),
 })
 
 router.put('/:id', async (req, res) => {
 	try {
 		const prisma = req.prisma
+		const tagService = new TagService(prisma)
 		const { id } = req.params
 		const data = updateTypeSchema.parse(req.body)
 
@@ -428,7 +455,52 @@ router.put('/:id', async (req, res) => {
 			},
 		})
 
-		res.json(type)
+		// Update tag associations if tagIds provided
+		if (data.tagIds !== undefined) {
+			// Get current tags
+			const currentTags = await tagService.getEntityTags(
+				'notification',
+				type.id
+			)
+			const currentTagIds = new Set(currentTags.map(t => t.id))
+			const newTagIds = new Set(data.tagIds)
+
+			// Remove tags that are no longer associated
+			for (const tag of currentTags) {
+				if (!newTagIds.has(tag.id)) {
+					await tagService.removeTagAssociation(
+						'notification',
+						type.id,
+						tag.id
+					)
+				}
+			}
+
+			// Add new tags
+			for (const tagId of data.tagIds) {
+				if (!currentTagIds.has(tagId)) {
+					await tagService.associateTag(
+						'notification',
+						type.id,
+						tagId,
+						false
+					)
+				}
+			}
+		}
+
+		// Load tags for response
+		const tags = await tagService.getEntityTags('notification', type.id)
+		const typeWithTags = {
+			...type,
+			tags: tags.map(tag => ({
+				id: tag.id,
+				name: tag.name,
+				color: tag.color,
+			})),
+		}
+
+		res.json(typeWithTags)
 	} catch (error: any) {
 		if (error instanceof z.ZodError) {
 			res.status(400).json({
