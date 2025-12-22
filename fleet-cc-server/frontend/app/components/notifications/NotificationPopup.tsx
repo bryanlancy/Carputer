@@ -57,6 +57,8 @@ export function NotificationPopup({
 	const timerStartTimeRef = useRef<number>(0)
 	const timerPausedTimeRef = useRef<number>(0)
 	const pauseStartTimeRef = useRef<number | null>(null)
+	const onCloseRef = useRef(onClose)
+	const handleCloseWithAnimationRef = useRef<(() => void) | null>(null)
 
 	// Entry animation and contextSafe setup using useGSAP
 	const { contextSafe } = useGSAP(
@@ -81,37 +83,45 @@ export function NotificationPopup({
 		{ scope: containerRef }
 	)
 
-	const handleCloseWithAnimation = contextSafe(() => {
-		if (isExiting) return // Prevent multiple calls
-		setIsExiting(true)
+	// Create close handler using contextSafe and store in ref
+	useEffect(() => {
+		handleCloseWithAnimationRef.current = contextSafe(() => {
+			if (isExiting) return // Prevent multiple calls
+			setIsExiting(true)
 
-		const element = containerRef.current
-		if (!element) {
-			onClose()
-			return
-		}
+			const element = containerRef.current
+			if (!element) {
+				onCloseRef.current()
+				return
+			}
 
-		// Clean up timers
-		if (timerRef.current) {
-			clearTimeout(timerRef.current)
-			timerRef.current = null
-		}
-		if (hoverRestartTimerRef.current) {
-			clearTimeout(hoverRestartTimerRef.current)
-			hoverRestartTimerRef.current = null
-		}
+			// Clean up timers
+			if (timerRef.current) {
+				clearTimeout(timerRef.current)
+				timerRef.current = null
+			}
+			if (hoverRestartTimerRef.current) {
+				clearTimeout(hoverRestartTimerRef.current)
+				hoverRestartTimerRef.current = null
+			}
 
-		// Animate out - fade out and slide off screen to the right
-		exitAnimationRef.current = gsap.to(element, {
-			x: 400,
-			opacity: 0,
-			duration: EXIT_ANIMATION_DURATION,
-			ease: 'power2.in',
-			onComplete: () => {
-				onClose()
-			},
+			// Animate out - fade out and slide off screen to the right
+			exitAnimationRef.current = gsap.to(element, {
+				x: 400,
+				opacity: 0,
+				duration: EXIT_ANIMATION_DURATION,
+				ease: 'power2.in',
+				onComplete: () => {
+					onCloseRef.current()
+				},
+			})
 		})
-	})
+	}, [contextSafe, isExiting])
+
+	// Keep onClose ref up to date
+	useEffect(() => {
+		onCloseRef.current = onClose
+	}, [onClose])
 
 	// Initialize timer start time on mount
 	useEffect(() => {
@@ -151,7 +161,10 @@ export function NotificationPopup({
 			if (remaining > 0) {
 				timerRef.current = setTimeout(updateProgress, 50)
 			} else {
-				handleCloseWithAnimation()
+				// Use ref to avoid dependency issues
+				if (handleCloseWithAnimationRef.current) {
+					handleCloseWithAnimationRef.current()
+				}
 			}
 		}
 
@@ -164,7 +177,7 @@ export function NotificationPopup({
 			// Don't clear hoverRestartTimerRef here - it's managed separately
 			// Clearing it here would cancel the 2-second timeout when isPaused changes!
 		}
-	}, [isPaused, isExiting, handleCloseWithAnimation])
+	}, [isPaused, isExiting])
 
 	// Cleanup hoverRestartTimerRef on unmount only
 	useEffect(() => {
@@ -230,7 +243,11 @@ export function NotificationPopup({
 			</div>
 			<button
 				className={styles.close}
-				onClick={handleCloseWithAnimation}
+				onClick={() => {
+					if (handleCloseWithAnimationRef.current) {
+						handleCloseWithAnimationRef.current()
+					}
+				}}
 				aria-label='Close'>
 				×
 			</button>
