@@ -2,6 +2,8 @@
 
 import { BaseEdge, EdgeProps, getBezierPath } from 'reactflow'
 import { useState } from 'react'
+import { DataType } from '../../utils/dataTypeExtractor'
+import LegendIcon from './LegendIcon'
 import styles from './EdgeWithTooltip.module.scss'
 
 export default function EdgeWithTooltip({
@@ -26,6 +28,7 @@ export default function EdgeWithTooltip({
 	})
 
 	const validationError = data?.validationError
+	const dataTypes = (data?.dataTypes as DataType[]) || []
 
 	return (
 		<>
@@ -36,6 +39,28 @@ export default function EdgeWithTooltip({
 				onMouseEnter={() => validationError && setShowTooltip(true)}
 				onMouseLeave={() => setShowTooltip(false)}
 			/>
+			{/* Data type icons at edge center */}
+			{dataTypes.length > 0 && (
+				<g>
+					<foreignObject
+						x={labelX - (dataTypes.length * 18 + (dataTypes.length - 1) * 4) / 2}
+						y={labelY - 50}
+						width={dataTypes.length * 18 + (dataTypes.length - 1) * 4}
+						height={60}
+						className={styles.labelContainer}>
+						<div className={styles.labelIcons}>
+							{dataTypes.map((type, index) => (
+								<LegendIcon
+									key={index}
+									type={type}
+									size="small"
+									className={styles.edgeIcon}
+								/>
+							))}
+						</div>
+					</foreignObject>
+				</g>
+			)}
 			{showTooltip && validationError && (
 				<g>
 					<foreignObject

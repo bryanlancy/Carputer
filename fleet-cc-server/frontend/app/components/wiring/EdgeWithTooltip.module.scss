@@ -25,3 +25,24 @@
 	line-height: 1.4;
 }
 
+.labelContainer {
+	pointer-events: auto;
+	overflow: visible;
+}
+
+.labelIcons {
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	gap: 4px;
+	height: 100%;
+	padding-bottom: 2px;
+}
+
+.edgeIcon {
+	background: white;
+	border-radius: 4px;
+	padding: 2px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
