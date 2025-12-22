@@ -17,9 +17,12 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import TriggerNode, { TriggerNodeData } from '../nodes/TriggerNode'
 import EventNode, { EventNodeData } from '../nodes/EventNode'
+import BranchNode, { BranchNodeData } from '../nodes/BranchNode'
 import { validateConnection } from '../../utils/schemaValidation'
+import { extractDataTypes } from '../../utils/dataTypeExtractor'
 import ContextMenu from './ContextMenu'
 import EdgeWithTooltip from './EdgeWithTooltip'
+import WiringLegend from './WiringLegend'
 import styles from './WiringCanvas.module.scss'
 
 export interface WiringCanvasProps {
@@ -79,6 +82,8 @@ const nodeTypeRefs = {
 	workspaceId: { current: null as number | null | undefined },
 	nodesRefForTest: { current: undefined as React.MutableRefObject<Node[] | null> | undefined },
 	nodesWithChanges: { current: new Set<string>() as Set<string> },
+	triggers: { current: [] as Array<any> },
+	events: { current: [] as Array<any> },
 }
 
 // Define node type functions outside component for maximum stability
@@ -104,13 +109,24 @@ function createEventNode(props: NodeProps<EventNodeData>) {
 	)
 }
 
+function createBranchNode(props: NodeProps<BranchNodeData>) {
+	return (
+		<BranchNode
+			{...props}
+			triggers={nodeTypeRefs.triggers.current}
+			events={nodeTypeRefs.events.current}
+			hasPendingChanges={nodeTypeRefs.nodesWithChanges.current.has(props.id)}
+		/>
+	)
+}
+
 // Define nodeTypes object outside component - functions are stable function declarations
 // This ensures React Flow sees a stable reference that never changes
-// Using Object.freeze to ensure it's truly immutable and cannot be modified
-const nodeTypes = Object.freeze({
+const nodeTypes = {
 	trigger: createTriggerNode,
 	event: createEventNode,
-})
+	branch: createBranchNode,
+}
 
 export default function WiringCanvas({
 	triggers,
@@ -159,16 +175,26 @@ export default function WiringCanvas({
 		nodesRefForTestRef.current = nodesRefForTest
 	}, [nodesRefForTest])
 
+	// Store triggers and events in refs for LogicNode
+	const triggersRef = useRef(triggers)
+	const eventsRef = useRef(events)
+	useEffect(() => {
+		triggersRef.current = triggers
+	}, [triggers])
+	useEffect(() => {
+		eventsRef.current = events
+	}, [events])
+
 	// Update global refs that node type functions use
 	// This allows nodeTypes to access dynamic values without being recreated
 	useEffect(() => {
 		nodeTypeRefs.workspaceId.current = workspaceIdRef.current
 		nodeTypeRefs.nodesRefForTest.current = nodesRefForTestRef.current
-	}, [workspaceId, nodesRefForTest])
-
-	useEffect(() => {
+		nodeTypeRefs.triggers.current = triggersRef.current
+		nodeTypeRefs.events.current = eventsRef.current
 		nodeTypeRefs.nodesWithChanges.current = nodesWithChangesRef.current
-	}, [nodesWithChanges])
+	}, [workspaceId, nodesRefForTest, triggers, events, nodesWithChanges])
+
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
@@ -292,7 +318,25 @@ export default function WiringCanvas({
 		setEdges(eds => {
 			// First, filter out orphaned edges (edges that reference non-existent nodes)
 			const validEdges = eds.filter(edge => {
-				// Extract trigger and event IDs from node IDs
+				// Use internalNodesRef to get the latest nodes state (including config changes)
+				const sourceNode = internalNodesRef.current.find(
+					n => n.id === edge.source
+				)
+				const targetNode = internalNodesRef.current.find(
+					n => n.id === edge.target
+				)
+
+				// Remove edges that reference non-existent nodes
+				if (!sourceNode || !targetNode) {
+					return false
+				}
+
+				// Allow edges involving branch nodes
+				if (sourceNode.type === 'branch' || targetNode.type === 'branch') {
+					return true
+				}
+
+				// For trigger->event edges, validate node IDs
 				const triggerMatch = edge.source.match(/^trigger-(\d+)/)
 				const eventMatch = edge.target.match(/^event-(\d+)/)
 
@@ -304,17 +348,10 @@ export default function WiringCanvas({
 				const eventId = parseInt(eventMatch[1])
 
 				const trigger = triggers.find(t => t.id === triggerId)
-				// Use internalNodesRef to get the latest nodes state (including config changes)
-				const sourceNode = internalNodesRef.current.find(
-					n => n.id === edge.source
-				)
-				const eventNode = internalNodesRef.current.find(
-					n => n.id === edge.target
-				)
 				const event = events.find(e => e.id === eventId)
 
-				// Remove edges that reference non-existent nodes
-				if (!trigger || !event || !sourceNode || !eventNode) {
+				// Remove edges that reference non-existent triggers/events
+				if (!trigger || !event) {
 					return false
 				}
 
@@ -323,23 +360,59 @@ export default function WiringCanvas({
 
 			// Then validate the remaining edges
 			return validEdges.map(edge => {
+				// Use internalNodesRef to get the latest nodes state (including config changes)
+				const sourceNode = internalNodesRef.current.find(
+					n => n.id === edge.source
+				)!
+				const targetNode = internalNodesRef.current.find(
+					n => n.id === edge.target
+				)!
+
+				// Skip validation for edges involving branch nodes - they're always valid
+				if (sourceNode.type === 'branch' || targetNode.type === 'branch') {
+					// Extract data types from source node if it's a trigger
+					let dataTypes: string[] = []
+					if (sourceNode.type === 'trigger' && sourceNode.data?.output_schema) {
+						dataTypes = extractDataTypes(sourceNode.data.output_schema)
+					}
+					return {
+						...edge,
+						style: { stroke: '#22c55e' },
+						animated: true,
+						data: {
+							...edge.data,
+							validationError: undefined,
+							dataTypes,
+						},
+					}
+				}
+
 				// Extract trigger and event IDs from node IDs
 				const triggerMatch = edge.source.match(/^trigger-(\d+)/)
 				const eventMatch = edge.target.match(/^event-(\d+)/)
 
-				const triggerId = parseInt(triggerMatch![1])
-				const eventId = parseInt(eventMatch![1])
+				if (!triggerMatch || !eventMatch) {
+					// This shouldn't happen after filtering, but handle it anyway
+					return {
+						...edge,
+						style: { stroke: '#ef4444' },
+						animated: false,
+						data: {
+							...edge.data,
+							validationError: 'Invalid connection',
+						},
+					}
+				}
+
+				const triggerId = parseInt(triggerMatch[1])
+				const eventId = parseInt(eventMatch[1])
 
 				const trigger = triggers.find(t => t.id === triggerId)!
-				// Use internalNodesRef to get the latest nodes state (including config changes)
-				const eventNode = internalNodesRef.current.find(
-					n => n.id === edge.target
-				)!
 				const event = events.find(e => e.id === eventId)!
 
 				// Get effective event schema based on node configuration
 				let effectiveEvent = event
-				const eventData = eventNode.data as any
+				const eventData = targetNode.data as any
 
 				// For show_notification, use the selected notification type's variable_schema
 				if (
@@ -408,6 +481,12 @@ export default function WiringCanvas({
 				}
 
 				const validation = validateConnection(trigger, effectiveEvent)
+
+				// Extract data types from trigger's output schema
+				const dataTypes = trigger.output_schema
+					? extractDataTypes(trigger.output_schema)
+					: []
+
 				if (!validation.valid) {
 					return {
 						...edge,
@@ -416,6 +495,7 @@ export default function WiringCanvas({
 						data: {
 							...edge.data,
 							validationError: validation.error,
+							dataTypes,
 						},
 					}
 				}
@@ -427,6 +507,7 @@ export default function WiringCanvas({
 					data: {
 						...edge.data,
 						validationError: undefined,
+						dataTypes,
 					},
 				}
 			})
@@ -626,6 +707,35 @@ export default function WiringCanvas({
 				return
 			}
 
+			const sourceNode = nodes.find(n => n.id === params.source)
+			const targetNode = nodes.find(n => n.id === params.target)
+
+			if (!sourceNode || !targetNode) {
+				return
+			}
+
+			// Allow connections to/from branch nodes without validation
+			if (sourceNode.type === 'branch' || targetNode.type === 'branch') {
+				// Extract data types from source node if it's a trigger
+				let dataTypes: string[] = []
+				if (sourceNode.type === 'trigger' && sourceNode.data?.output_schema) {
+					dataTypes = extractDataTypes(sourceNode.data.output_schema)
+				}
+				const newEdge = {
+					...params,
+					animated: true,
+					style: { stroke: '#22c55e' },
+					data: {
+						dataTypes,
+					},
+				}
+				setEdges(eds => addEdge(newEdge, eds))
+				if (onConnectProp) {
+					onConnectProp(params)
+				}
+				return
+			}
+
 			// Extract trigger and event IDs from node IDs (format: trigger-{id}-{timestamp} or event-{id}-{timestamp})
 			const triggerMatch = params.source.match(/^trigger-(\d+)/)
 			const eventMatch = params.target.match(/^event-(\d+)/)
@@ -734,6 +844,11 @@ export default function WiringCanvas({
 			// Validate the connection with effective schema
 			const validation = validateConnection(trigger, effectiveEvent)
 
+			// Extract data types from trigger's output schema
+			const dataTypes = trigger.output_schema
+				? extractDataTypes(trigger.output_schema)
+				: []
+
 			// Always allow the connection, but mark it appropriately
 			const newEdge = {
 				...params,
@@ -743,6 +858,7 @@ export default function WiringCanvas({
 					validationError: validation.valid
 						? undefined
 						: validation.error,
+					dataTypes,
 				},
 			}
 			setEdges(eds => addEdge(newEdge, eds))
@@ -755,11 +871,37 @@ export default function WiringCanvas({
 		[triggers, events, nodes, onConnectProp, setEdges]
 	)
 
+	// Handle adding branch node
+	const handleAddBranchNode = useCallback(() => {
+		const newNode: Node<BranchNodeData> = {
+			id: `branch-${Date.now()}`,
+			type: 'branch',
+			position: { x: 400, y: 200 }, // Default position
+			data: {
+				config: {
+					logicType: 'if_else',
+				},
+			},
+		}
+		setNodes(nds => [...nds, newNode])
+	}, [setNodes])
+
 	return (
 		<div
 			className={styles.wiringCanvas}
 			onDrop={onDrop}
 			onDragOver={onDragOver}>
+			<WiringLegend />
+			{!readOnly && (
+				<div className={styles.toolbar}>
+					<button
+						onClick={handleAddBranchNode}
+						className={styles.toolbarButton}
+						title="Add Branch Node">
+						Branch ⑂
+					</button>
+				</div>
+			)}
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
