@@ -6,7 +6,7 @@ import LegendIcon from '../LegendIcon'
 import styles from './WiringLegend.module.scss'
 
 export default function WiringLegend() {
-	const [isExpanded, setIsExpanded] = useState(true)
+	const [isExpanded, setIsExpanded] = useState(false)
 
 	return (
 		<div className={styles.legend}>
