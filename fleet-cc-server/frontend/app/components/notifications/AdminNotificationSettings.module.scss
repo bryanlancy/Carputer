@@ -1,4 +1,4 @@
-@import '../admin/_mixins';
+@use '../admin/_mixins' as *;
 
 .container {
 	padding: 0;
