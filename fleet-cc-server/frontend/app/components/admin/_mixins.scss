@@ -1,0 +1,24 @@
+// Shared mixin for management page headers
+@mixin management-header {
+	margin-bottom: 1.5rem;
+
+	h2 {
+		margin: 0 0 8px 0;
+		font-size: 1.5rem;
+		color: var(--text-primary);
+		font-weight: 600;
+	}
+
+	.description,
+	.subtitle {
+		margin: 0;
+		color: var(--text-secondary);
+		font-size: 0.9375rem;
+	}
+}
+
+// Shared mixin for management page containers
+@mixin management-container {
+	padding: 0;
+}
+
