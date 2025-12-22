@@ -73,6 +73,45 @@ const edgeTypes = {
 	default: EdgeWithTooltip,
 }
 
+// Global ref store for node type dynamic values - defined outside component
+// This allows node type functions to access dynamic values without being recreated
+const nodeTypeRefs = {
+	workspaceId: { current: null as number | null | undefined },
+	nodesRefForTest: { current: undefined as React.MutableRefObject<Node[] | null> | undefined },
+	nodesWithChanges: { current: new Set<string>() as Set<string> },
+}
+
+// Define node type functions outside component for maximum stability
+// Using function declarations (not arrow functions) for better stability
+// These functions are created once and never recreated, which is what React Flow requires
+function createTriggerNode(props: NodeProps<TriggerNodeData>) {
+	return (
+		<TriggerNode
+			{...props}
+			workspaceId={nodeTypeRefs.workspaceId.current}
+			nodesRefForTest={nodeTypeRefs.nodesRefForTest.current}
+			hasPendingChanges={nodeTypeRefs.nodesWithChanges.current.has(props.id)}
+		/>
+	)
+}
+
+function createEventNode(props: NodeProps<EventNodeData>) {
+	return (
+		<EventNode
+			{...props}
+			hasPendingChanges={nodeTypeRefs.nodesWithChanges.current.has(props.id)}
+		/>
+	)
+}
+
+// Define nodeTypes object outside component - functions are stable function declarations
+// This ensures React Flow sees a stable reference that never changes
+// Using Object.freeze to ensure it's truly immutable and cannot be modified
+const nodeTypes = Object.freeze({
+	trigger: createTriggerNode,
+	event: createEventNode,
+})
+
 export default function WiringCanvas({
 	triggers,
 	events,
@@ -114,30 +153,22 @@ export default function WiringCanvas({
 		}
 	}, [nodesWithChanges])
 
-	// Create nodeTypes with workspaceId and nodesRef - use useMemo to keep reference stable
-	// Access workspaceId via ref to avoid React Flow warning about unstable nodeTypes
-	// Use ref for nodesWithChanges to avoid recreating nodeTypes on every render
-	const nodeTypes = useMemo(
-		() => ({
-			trigger: (props: NodeProps<TriggerNodeData>) => (
-				<TriggerNode
-					{...props}
-					workspaceId={workspaceIdRef.current}
-					nodesRefForTest={nodesRefForTest}
-					hasPendingChanges={nodesWithChangesRef.current.has(props.id)}
-				/>
-			),
-			event: (props: NodeProps<EventNodeData>) => (
-				<EventNode
-					{...props}
-					hasPendingChanges={nodesWithChangesRef.current.has(props.id)}
-				/>
-			),
-		}),
-		// Only recreate when nodesRefForTest changes, not when nodesWithChanges changes
-		// We use a ref to access the current value without triggering recreation
-		[nodesRefForTest]
-	)
+	// Store nodesRefForTest in a ref to avoid recreating nodeTypes when it changes
+	const nodesRefForTestRef = useRef(nodesRefForTest)
+	useEffect(() => {
+		nodesRefForTestRef.current = nodesRefForTest
+	}, [nodesRefForTest])
+
+	// Update global refs that node type functions use
+	// This allows nodeTypes to access dynamic values without being recreated
+	useEffect(() => {
+		nodeTypeRefs.workspaceId.current = workspaceIdRef.current
+		nodeTypeRefs.nodesRefForTest.current = nodesRefForTestRef.current
+	}, [workspaceId, nodesRefForTest])
+
+	useEffect(() => {
+		nodeTypeRefs.nodesWithChanges.current = nodesWithChangesRef.current
+	}, [nodesWithChanges])
 	const [contextMenu, setContextMenu] = React.useState<{
 		x: number
 		y: number
