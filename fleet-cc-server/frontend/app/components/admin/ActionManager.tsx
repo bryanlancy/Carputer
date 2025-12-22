@@ -170,6 +170,7 @@ export default function ActionManager() {
 					input_schema: {},
 					handler_type: 'notification',
 					enabled: true,
+					tagIds: [],
 				})
 				await loadActions()
 			} else {
@@ -434,8 +435,13 @@ export default function ActionManager() {
 					<tbody>
 						{actions.length === 0 ? (
 							<tr>
-								<td colSpan={6} className={styles.empty}>
-									No actions found. Create one to get started.
+								<td colSpan={6}>
+									<div className={styles.empty}>
+										<p>
+											No actions found. Create one to get
+											started.
+										</p>
+									</div>
 								</td>
 							</tr>
 						) : (
@@ -454,7 +460,16 @@ export default function ActionManager() {
 												size='small'
 											/>
 										</td>
-										<td>{action.enabled ? 'Yes' : 'No'}</td>
+										<td>
+											<span
+												className={
+													action.enabled
+														? styles.enabled
+														: styles.disabled
+												}>
+												{action.enabled ? 'Yes' : 'No'}
+											</span>
+										</td>
 										<td>
 											<button
 												onClick={() =>

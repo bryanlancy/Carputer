@@ -404,8 +404,10 @@ export default function TriggerManager() {
 							<tr>
 								<td colSpan={5}>
 									<div className={styles.empty}>
-										No triggers found. Create one to get
-										started.
+										<p>
+											No triggers found. Create one to get
+											started.
+										</p>
 									</div>
 								</td>
 							</tr>
@@ -425,7 +427,14 @@ export default function TriggerManager() {
 											/>
 										</td>
 										<td>
-											{trigger.enabled ? 'Yes' : 'No'}
+											<span
+												className={
+													trigger.enabled
+														? styles.enabled
+														: styles.disabled
+												}>
+												{trigger.enabled ? 'Yes' : 'No'}
+											</span>
 										</td>
 										<td>
 											<button
