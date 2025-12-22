@@ -478,8 +478,10 @@ export default function MessageManager() {
 							<tr>
 								<td colSpan={6}>
 									<div className={styles.empty}>
-										No messages found. Create one to get
-										started.
+										<p>
+											No messages found. Create one to get
+											started.
+										</p>
 									</div>
 								</td>
 							</tr>
@@ -500,13 +502,20 @@ export default function MessageManager() {
 												/>
 											) : (
 												<span
-													className={styles.variable}>
-													Variable
+													className={styles.noDataTypes}>
+													None
 												</span>
 											)}
 										</td>
 										<td>
-											{message.enabled ? 'Yes' : 'No'}
+											<span
+												className={
+													message.enabled
+														? styles.enabled
+														: styles.disabled
+												}>
+												{message.enabled ? 'Yes' : 'No'}
+											</span>
 										</td>
 										<td>
 											<button
