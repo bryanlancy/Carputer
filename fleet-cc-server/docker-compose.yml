@@ -209,7 +209,7 @@ services:
             - api
         networks:
             - fleet-network
-        command: npx next dev --webpack
+        command: sh -c "npm install && npx next dev --webpack"
 
 volumes:
     postgres_data:

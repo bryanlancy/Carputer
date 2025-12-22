@@ -19,14 +19,23 @@ export default function NotificationPopupManager() {
 	// Handle WebSocket messages for popup notifications
 	const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
 		if (message.type === 'notification' && message.notification) {
-			const notification = message.notification as any
+			// message.notification should be the actual notification object
+			// Create a plain object copy to avoid issues with getters/setters or non-enumerable properties
+			let notification = message.notification as any
 
-			// Only show popup if show_popup is true
-			// Check both show_popup and showPopup (for compatibility)
-			if (
-				notification.show_popup === true ||
-				notification.showPopup === true
-			) {
+			// If notification is actually the whole message (has 'notification' property), get the nested one
+			if (notification && typeof notification === 'object' && 'notification' in notification) {
+				notification = notification.notification
+			}
+
+			// Create plain copy
+			notification = JSON.parse(JSON.stringify(notification)) as any
+
+			// Access show_popup property
+			const showPopup = notification.show_popup ?? notification.showPopup ?? false
+
+			// Only show popup if show_popup is true (check for boolean true or string 'true' or number 1)
+			if (showPopup === true || showPopup === 'true' || showPopup === 1) {
 				const popupNotification: PopupNotification = {
 					id: `${notification.id}-${Date.now()}`,
 					title: notification.name || 'Notification',
@@ -43,13 +52,6 @@ export default function NotificationPopupManager() {
 				}
 
 				setPopups(prev => [...prev, popupNotification])
-
-				// Auto-remove after 5 seconds
-				setTimeout(() => {
-					setPopups(prev =>
-						prev.filter(p => p.id !== popupNotification.id)
-					)
-				}, 5000)
 			}
 		}
 	}, [])
@@ -68,11 +70,7 @@ export default function NotificationPopupManager() {
 			{popups.map((popup, index) => (
 				<div
 					key={popup.id}
-					className={styles.popupWrapper}
-					style={{
-						transform: `translateY(${index * 10}px)`,
-						zIndex: 1000 + index,
-					}}>
+					className={styles.popupWrapper}>
 					<NotificationPopup
 						notification={{
 							id: popup.id,

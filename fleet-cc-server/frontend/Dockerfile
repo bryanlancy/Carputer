@@ -4,7 +4,8 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# Use npm install to handle lock file updates automatically
+RUN npm install --legacy-peer-deps
 
 # Development image with dependencies
 FROM base AS dev
