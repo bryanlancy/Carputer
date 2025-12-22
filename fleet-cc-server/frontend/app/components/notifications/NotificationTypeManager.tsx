@@ -677,7 +677,6 @@ export default function NotificationTypeManager() {
 					<table className={styles.table}>
 						<thead>
 							<tr>
-								<th>ID</th>
 								<th>Name</th>
 								<th>Priority</th>
 								<th>Required Data Types</th>
@@ -692,9 +691,6 @@ export default function NotificationTypeManager() {
 									: []
 								return (
 									<tr key={type.id}>
-										<td className={styles.codeCell}>
-											{type.id}
-										</td>
 										<td>{type.name}</td>
 										<td>{type.priority || 0}</td>
 										<td>
