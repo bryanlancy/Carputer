@@ -346,60 +346,30 @@ export class WiringExecutorService {
 			throw new Error('User ID required for notification creation')
 		}
 
-		let notificationId: number
-
-		// PRIORITY: Always use the selected notification from the dropdown if configured
-		// This ensures the test uses the actual notification template that will be used in production
-		if (nodeConfig?.notification_id) {
-			notificationId = parseInt(nodeConfig.notification_id)
-
-			// Verify the notification exists and is enabled
-			const selectedNotification = await this.prisma.notification.findUnique({
-				where: { id: notificationId },
-			})
-
-			if (!selectedNotification) {
-				throw new Error(
-					`Selected notification ${notificationId} not found. Please select a valid notification.`
-				)
-			}
-
-			if (!selectedNotification.enabled) {
-				throw new Error(
-					`Selected notification "${selectedNotification.name}" is disabled. Please enable it or select a different notification.`
-				)
-			}
-		} else {
-			// Fallback: For testing without a configured notification_id, create or get a default test notification
-			// This allows testing the show_notification action without requiring configuration
-			const defaultNotification = await this.notificationService.getOrCreateNotification(
-				'Test Notification',
-				{
-					description: 'Default notification for testing wiring configurations',
-					priority: 0,
-					enabled: true,
-				}
+		// notification_id is always required - both for testing and real execution
+		if (!nodeConfig?.notification_id) {
+			throw new Error(
+				'Notification ID not configured for this event. Please select a notification in the wiring manager.'
 			)
-			notificationId = defaultNotification.id
+		}
 
-			// If the default notification doesn't have a message template, set a simple one
-			if (!defaultNotification.message_template) {
-				// Generate a simple message from trigger data
-				let message = 'Test notification'
-				if (triggerData?.device?.device_id) {
-					message = `Test notification for device ${triggerData.device.device_id}`
-				} else if (triggerData?.device?.hostname) {
-					message = `Test notification for ${triggerData.device.hostname}`
-				}
+		const notificationId = parseInt(nodeConfig.notification_id)
 
-				// Update the notification template with a simple message
-				await this.prisma.notification.update({
-					where: { id: notificationId },
-					data: {
-						message_template: message,
-					},
-				})
-			}
+		// Verify the notification exists and is enabled
+		const selectedNotification = await this.prisma.notification.findUnique({
+			where: { id: notificationId },
+		})
+
+		if (!selectedNotification) {
+			throw new Error(
+				`Selected notification ${notificationId} not found. Please select a valid notification.`
+			)
+		}
+
+		if (!selectedNotification.enabled) {
+			throw new Error(
+				`Selected notification "${selectedNotification.name}" is disabled. Please enable it or select a different notification.`
+			)
 		}
 
 		// Create the test notification using the selected/default notification template

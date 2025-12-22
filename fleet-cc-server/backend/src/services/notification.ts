@@ -51,6 +51,8 @@ export class NotificationService {
 
 	/**
 	 * Create a notification for a device
+	 * @deprecated This method is deprecated and should not be used.
+	 * Use wiring-based triggers with show_notification events instead.
 	 */
 	async createNotification(
 		deviceId: number,
@@ -63,25 +65,10 @@ export class NotificationService {
 			show_in_feed?: boolean
 		} = {}
 	): Promise<any> {
-		if (!deviceId || !typeCode) {
-			throw new Error('Device ID and notification type code are required')
-		}
-
-		// Get or create notification (using typeCode as name for backward compatibility)
-		const notificationType = await this.getOrCreateNotification(typeCode)
-
-		if (!notificationType.enabled) {
-			throw new Error(`Notification ${typeCode} is disabled`)
-		}
-
-		// Generate default title if not provided
-		const title =
-			options.title || `${notificationType.name} - Device ${deviceId}`
-
-		// Note: notification_instances table has been removed
-		// This method may need to be refactored based on new requirements
+		// Throw error immediately to prevent any notification creation
+		// This method is deprecated - wiring-based triggers should be used instead
 		throw new Error(
-			'createNotification is deprecated - notification_instances table has been removed'
+			'createNotification is deprecated - notification_instances table has been removed. Use wiring-based triggers with show_notification events instead.'
 		)
 	}
 
