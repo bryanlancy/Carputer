@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Handle, Position, NodeProps, useNodeId, useReactFlow } from 'reactflow'
 import { extractDataTypes, DataType } from '../../utils/dataTypeExtractor'
 import { DataTypeIcons } from '../../utils/dataTypeIcons'
@@ -70,7 +70,6 @@ export default function EventNode({
 	)
 	const [selectedNotificationType, setSelectedNotificationType] =
 		useState<string>(currentNodeData.config?.notification_id || '')
-	const [forceUpdate, setForceUpdate] = useState(0) // Force re-render when config changes
 
 	// Sync with prop changes to ensure we have the latest notification types
 	useEffect(() => {
@@ -242,70 +241,104 @@ export default function EventNode({
 	const handleNotificationTypeChange = (notificationId: string) => {
 		setSelectedNotificationType(notificationId)
 		updateNodeConfig('notification_id', notificationId)
-		// Force a re-render to ensure requirements are recalculated with new selection
-		setForceUpdate(prev => prev + 1)
+		// useMemo will automatically recalculate requirements when currentSelectedNotification changes
 	}
 
 	// Get current node data to ensure we have the latest config
-	// Use forceUpdate to ensure we get fresh data when selection changes
 	const currentData = nodeId ? getNode(nodeId)?.data : data
 	const currentConfig = currentData?.config || {}
 	// Prefer the state value if it's been set (more recent), otherwise use config
 	const currentSelectedNotification = selectedNotificationType || currentConfig.notification_id || ''
 
-	// Determine data types based on configuration
-	// For variable types, use the selected item's schema if available
-	let effectiveInputSchema = currentData?.input_schema || data.input_schema
-	let effectiveDataTypes: DataType[] = []
-	let hasVariableTypes = false
-	let isConfigured = false
+	// Get all available notification types, prioritizing the most up-to-date source
+	// This ensures we have variable_schema when available
+	const allNotificationTypes = useMemo(() => {
+		// Priority: currentData (from React Flow) > data (props) > local state
+		const fromCurrentData = currentData?.availableNotificationTypes || []
+		const fromProps = data.availableNotificationTypes || []
+		const fromState = notificationTypes || []
 
-	if (currentData?.event_code === 'send_email') {
-		hasVariableTypes = true
-		if (currentConfig.message_code || selectedMessage) {
-			isConfigured = true
-			// Find the selected message and use its variable_schema
-			const selectedMsg = messages.find(
-				m => m.message_code === (currentConfig.message_code || selectedMessage)
-			)
-			// For now, assume email messages require device data (can be enhanced later)
-			effectiveDataTypes = ['Device']
-		}
-	} else if (currentData?.event_code === 'execute_command') {
-		hasVariableTypes = true
-		if (currentConfig.command || selectedCommand) {
-			isConfigured = true
-			// Commands always require device data
-			effectiveDataTypes = ['Device', 'Command']
-		}
-	} else if (currentData?.event_code === 'show_notification') {
-		hasVariableTypes = true
-		if (currentSelectedNotification) {
-			isConfigured = true
-			// Find the selected notification type from local state or props
-			// Check both local state and data.availableNotificationTypes
-			const allNotificationTypes = currentData?.availableNotificationTypes || data.availableNotificationTypes || notificationTypes
-			const selectedType = allNotificationTypes.find(
-				nt => nt.id.toString() === currentSelectedNotification.toString()
-			)
-			if (selectedType?.variable_schema) {
-				effectiveInputSchema = selectedType.variable_schema
-				effectiveDataTypes = extractDataTypes(
-					selectedType.variable_schema
-				)
-			} else {
-				// If no variable_schema, the notification doesn't require any data
-				effectiveDataTypes = []
+		// Merge all sources, prioritizing those with variable_schema
+		// Use a Map to deduplicate by id, keeping the one with variable_schema if available
+		const typeMap = new Map<number, typeof notificationTypes[0]>()
+
+		// Add all types, prioritizing those with variable_schema
+		;[...fromCurrentData, ...fromProps, ...fromState].forEach(nt => {
+			const existing = typeMap.get(nt.id)
+			if (!existing || (nt.variable_schema && !existing.variable_schema)) {
+				typeMap.set(nt.id, nt)
 			}
+		})
+
+		return Array.from(typeMap.values())
+	}, [currentData?.availableNotificationTypes, data.availableNotificationTypes, notificationTypes])
+
+	// Determine data types based on configuration using useMemo for proper recalculation
+	const { effectiveDataTypes, hasVariableTypes, isConfigured } = useMemo(() => {
+		let effectiveInputSchema = currentData?.input_schema || data.input_schema
+		let dataTypes: DataType[] = []
+		let variableTypes = false
+		let configured = false
+
+		if (currentData?.event_code === 'send_email') {
+			variableTypes = true
+			if (currentConfig.message_code || selectedMessage) {
+				configured = true
+				// For now, assume email messages require device data (can be enhanced later)
+				dataTypes = ['Device']
+			}
+		} else if (currentData?.event_code === 'execute_command') {
+			variableTypes = true
+			if (currentConfig.command || selectedCommand) {
+				configured = true
+				// Commands always require device data
+				dataTypes = ['Device', 'Command']
+			}
+		} else if (currentData?.event_code === 'show_notification') {
+			variableTypes = true
+			if (currentSelectedNotification) {
+				configured = true
+				// Find the selected notification type
+				const selectedType = allNotificationTypes.find(
+					nt => String(nt.id) === String(currentSelectedNotification)
+				)
+				if (selectedType?.variable_schema) {
+					effectiveInputSchema = selectedType.variable_schema
+					dataTypes = extractDataTypes(selectedType.variable_schema)
+				} else {
+					// If no variable_schema, the notification doesn't require any data
+					dataTypes = []
+				}
+			}
+		} else {
+			// Non-variable types use the base input_schema
+			dataTypes = (currentData?.input_schema || data.input_schema)
+				? extractDataTypes(currentData?.input_schema || data.input_schema)
+				: []
+			variableTypes = (currentData?.hasVariableDataTypes || data.hasVariableDataTypes) || false
+			configured = true // Non-variable types are always "configured"
 		}
-	} else {
-		// Non-variable types use the base input_schema
-		effectiveDataTypes = (currentData?.input_schema || data.input_schema)
-			? extractDataTypes(currentData?.input_schema || data.input_schema)
-			: []
-		hasVariableTypes = (currentData?.hasVariableDataTypes || data.hasVariableDataTypes) || false
-		isConfigured = true // Non-variable types are always "configured"
-	}
+
+		return {
+			effectiveDataTypes: dataTypes,
+			hasVariableTypes: variableTypes,
+			isConfigured: configured,
+		}
+	}, [
+		currentData?.event_code,
+		currentData?.input_schema,
+		currentData?.hasVariableDataTypes,
+		data.input_schema,
+		data.hasVariableDataTypes,
+		currentConfig.message_code,
+		currentConfig.command,
+		currentConfig.notification_id,
+		selectedMessage,
+		selectedCommand,
+		currentSelectedNotification,
+		allNotificationTypes,
+		messages,
+	])
 
 	const displayData = currentData || data
 
@@ -397,7 +430,7 @@ export default function EventNode({
 							<option value=''>
 								Select a notification...
 							</option>
-							{(displayData.availableNotificationTypes || data.availableNotificationTypes || notificationTypes).map(nt => (
+							{allNotificationTypes.map(nt => (
 								<option key={nt.id} value={nt.id.toString()}>
 									{nt.name || `Notification ${nt.id}`}
 								</option>
