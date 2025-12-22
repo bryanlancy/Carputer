@@ -1,0 +1,61 @@
+.legendIcon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	cursor: help;
+	transition: all 0.2s ease;
+	opacity: 0.7;
+
+	&:hover {
+		opacity: 1;
+		transform: scale(1.15);
+	}
+
+	.icon {
+		display: inline-block;
+		line-height: 1;
+		user-select: none;
+	}
+
+	&.small {
+		font-size: 0.875rem;
+	}
+
+	&.medium {
+		font-size: 1rem;
+	}
+
+	&.large {
+		font-size: 1.25rem;
+	}
+}
+
+.tooltip {
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	margin-bottom: 8px;
+	padding: 6px 10px;
+	background: #1f2937;
+	color: white;
+	border-radius: 6px;
+	font-size: 12px;
+	white-space: nowrap;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+		0 2px 4px -1px rgba(0, 0, 0, 0.06);
+	pointer-events: none;
+	z-index: 10000;
+
+	&::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		border: 5px solid transparent;
+		border-top-color: #1f2937;
+	}
+}
+
