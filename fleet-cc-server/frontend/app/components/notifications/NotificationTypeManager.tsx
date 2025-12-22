@@ -8,6 +8,7 @@ import { DataTypeIcons } from '../../utils/dataTypeIcons'
 import { generateSchemaFromTemplate } from '../../utils/templateSchemaGenerator'
 import TemplateEditor from '../admin/TemplateEditor'
 import ConfirmModal from '../ui/ConfirmModal'
+import TagSelector from '../ui/TagSelector'
 import styles from './NotificationTypeManager.module.scss'
 
 interface Notification {
@@ -23,6 +24,7 @@ interface Notification {
 	priority?: number
 	show_in_feed?: boolean
 	show_popup?: boolean
+	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
 export default function NotificationTypeManager() {
@@ -132,6 +134,7 @@ export default function NotificationTypeManager() {
 							? formData.show_in_feed
 							: true,
 					show_popup: formData.show_popup || false,
+					tagIds: formData.tagIds || [],
 				}),
 			})
 
@@ -150,6 +153,7 @@ export default function NotificationTypeManager() {
 					variable_schema: null,
 					show_in_feed: true,
 					show_popup: false,
+					tagIds: [],
 				})
 			} else {
 				const errorData = await response
@@ -186,6 +190,7 @@ export default function NotificationTypeManager() {
 				(type as any).show_popup !== undefined
 					? (type as any).show_popup
 					: false,
+			tagIds: type.tags?.map(tag => tag.id) || [],
 		})
 		setShowForm(true)
 	}
@@ -275,6 +280,7 @@ export default function NotificationTypeManager() {
 			variable_schema: null,
 			show_in_feed: true,
 			show_popup: false,
+			tagIds: [],
 		})
 	}
 
@@ -341,6 +347,7 @@ export default function NotificationTypeManager() {
 							variable_schema: null,
 							show_in_feed: true,
 							show_popup: false,
+							tagIds: [],
 						})
 						setShowForm(true)
 					}}
@@ -609,6 +616,19 @@ export default function NotificationTypeManager() {
 										</label>
 									</div>
 								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<TagSelector
+									selectedTagIds={formData.tagIds}
+									onChange={tagIds =>
+										setFormData({
+											...formData,
+											tagIds,
+										})
+									}
+									label='Tags'
+								/>
 							</div>
 
 							<div className={styles.formGroup}>

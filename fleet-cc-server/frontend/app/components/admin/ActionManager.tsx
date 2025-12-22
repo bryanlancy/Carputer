@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import { extractDataTypes } from '../../utils/dataTypeExtractor'
 import { DataTypeIcons } from '../../utils/dataTypeIcons'
+import TagSelector from '../ui/TagSelector'
 import styles from './ActionManager.module.scss'
 
 interface Action {
@@ -17,6 +18,7 @@ interface Action {
 	enabled: boolean
 	created_at?: string
 	updated_at?: string
+	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
 export default function ActionManager() {
@@ -33,6 +35,7 @@ export default function ActionManager() {
 		input_schema: {},
 		handler_type: 'notification',
 		enabled: true,
+		tagIds: [] as number[],
 	})
 
 	useEffect(() => {
@@ -75,6 +78,7 @@ export default function ActionManager() {
 			input_schema: action.input_schema || {},
 			handler_type: action.handler_type,
 			enabled: action.enabled,
+			tagIds: action.tags?.map(tag => tag.id) || [],
 		})
 		setShowForm(true)
 	}
@@ -120,6 +124,7 @@ export default function ActionManager() {
 				input_schema: formData.input_schema,
 				handler_type: formData.handler_type,
 				enabled: formData.enabled,
+				tagIds: formData.tagIds || [],
 			}
 
 			if (formData.description && formData.description.trim()) {
@@ -189,6 +194,7 @@ export default function ActionManager() {
 			input_schema: {},
 			handler_type: 'notification',
 			enabled: true,
+			tagIds: [],
 		})
 		setEditingAction(null)
 		setShowForm(false)
@@ -364,6 +370,19 @@ export default function ActionManager() {
 										action requires
 									</small>
 								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<TagSelector
+									selectedTagIds={formData.tagIds}
+									onChange={tagIds =>
+										setFormData({
+											...formData,
+											tagIds,
+										})
+									}
+									label='Tags'
+								/>
 							</div>
 
 							<div className={styles.formGroup}>

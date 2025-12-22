@@ -2,10 +2,15 @@
 	padding: 24px;
 	background: white;
 	border-radius: 8px;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
 }
 
 .header {
 	margin-bottom: 24px;
+	flex-shrink: 0;
 }
 
 .header h2 {
@@ -22,11 +27,19 @@
 	line-height: 1.5;
 }
 
+.contentWrapper {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
 .workspaceSelector {
 	margin-bottom: 24px;
 	display: flex;
 	align-items: center;
 	gap: 12px;
+	flex-shrink: 0;
 }
 
 .workspaceSelector label {
@@ -56,6 +69,7 @@
 	border-radius: 8px;
 	padding: 20px;
 	margin-bottom: 24px;
+	flex-shrink: 0;
 
 	h3 {
 		margin: 0 0 16px 0;
@@ -119,7 +133,8 @@
 
 .wiringContainer {
 	display: flex;
-	height: 600px;
+	flex: 1;
+	min-height: 0;
 	margin-bottom: 24px;
 	border: 1px solid #e5e7eb;
 	border-radius: 8px;
@@ -136,6 +151,8 @@
 	display: flex;
 	justify-content: flex-end;
 	gap: 12px;
+	flex-shrink: 0;
+	margin-top: auto;
 }
 
 .saveButton {
@@ -167,6 +184,7 @@
 	color: #991b1b;
 	margin-bottom: 16px;
 	font-size: 14px;
+	flex-shrink: 0;
 }
 
 .success {
@@ -177,6 +195,7 @@
 	color: #166534;
 	margin-bottom: 16px;
 	font-size: 14px;
+	flex-shrink: 0;
 }
 
 .emptyState {

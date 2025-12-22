@@ -464,12 +464,12 @@ export default function WiringManager() {
 				</div>
 			)}
 
-			{error && <div className={styles.error}>{error}</div>}
-
-			{success && <div className={styles.success}>{success}</div>}
-
 			{selectedWorkspaceId && (
-				<>
+				<div className={styles.contentWrapper}>
+					{error && <div className={styles.error}>{error}</div>}
+
+					{success && <div className={styles.success}>{success}</div>}
+
 					<div className={styles.wiringContainer}>
 						<TriggerSidebar
 							triggers={triggers}
@@ -523,7 +523,6 @@ export default function WiringManager() {
 							}}
 						/>
 					</div>
-
 					<div className={styles.actions}>
 						{hasInvalidConnections && (
 							<div className={styles.error}>
@@ -538,7 +537,7 @@ export default function WiringManager() {
 							{saving ? 'Saving...' : 'Save Configuration'}
 						</button>
 					</div>
-				</>
+				</div>
 			)}
 
 			{!selectedWorkspaceId && (

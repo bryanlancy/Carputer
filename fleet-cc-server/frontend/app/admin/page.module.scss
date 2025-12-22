@@ -1,23 +1,28 @@
 .container {
 	padding: 2rem;
-	max-width: 1400px;
-	margin: 0 auto;
+	max-width: 100%;
+	margin: 0;
 	min-height: calc(100vh - 60px);
+	height: calc(100vh - 60px);
+	display: flex;
+	flex-direction: column;
 }
 
 .header {
-	margin-bottom: 2rem;
+	padding: 0 1.5rem 1.5rem 1.5rem;
+	border-bottom: 1px solid var(--border-color);
+	margin-bottom: 1.5rem;
 
 	h1 {
 		margin: 0 0 0.5rem 0;
-		font-size: 2rem;
+		font-size: 1.5rem;
 		color: var(--text-primary);
 	}
 
 	.subtitle {
 		margin: 0;
 		color: var(--text-secondary);
-		font-size: 1rem;
+		font-size: 0.875rem;
 	}
 }
 
@@ -25,6 +30,8 @@
 	display: flex;
 	gap: 2rem;
 	align-items: flex-start;
+	flex: 1;
+	min-height: 0;
 }
 
 .sidebar {
@@ -38,6 +45,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 1.5rem;
+	max-height: calc(100vh - 100px);
+	overflow-y: auto;
 }
 
 .navGroup {
@@ -102,6 +111,10 @@
 .content {
 	flex: 1;
 	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	height: 100%;
 }
 
 .loading {

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import { extractDataTypes } from '../../utils/dataTypeExtractor'
 import { DataTypeIcons } from '../../utils/dataTypeIcons'
+import TagSelector from '../ui/TagSelector'
 import styles from './TriggerManager.module.scss'
 
 interface Trigger {
@@ -16,6 +17,7 @@ interface Trigger {
 	enabled: boolean
 	created_at?: string
 	updated_at?: string
+	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
 export default function TriggerManager() {
@@ -31,6 +33,7 @@ export default function TriggerManager() {
 		description: '',
 		output_schema: {},
 		enabled: true,
+		tagIds: [] as number[],
 	})
 
 	useEffect(() => {
@@ -72,6 +75,7 @@ export default function TriggerManager() {
 			description: trigger.description || '',
 			output_schema: trigger.output_schema || {},
 			enabled: trigger.enabled,
+			tagIds: trigger.tags?.map(tag => tag.id) || [],
 		})
 		setShowForm(true)
 	}
@@ -116,6 +120,7 @@ export default function TriggerManager() {
 				trigger_name: formData.trigger_name.trim(),
 				output_schema: formData.output_schema,
 				enabled: formData.enabled,
+				tagIds: formData.tagIds || [],
 			}
 
 			if (formData.description && formData.description.trim()) {
@@ -160,6 +165,7 @@ export default function TriggerManager() {
 					description: '',
 					output_schema: {},
 					enabled: true,
+					tagIds: [],
 				})
 				await loadTriggers()
 			} else {
@@ -183,6 +189,7 @@ export default function TriggerManager() {
 			description: '',
 			output_schema: {},
 			enabled: true,
+			tagIds: [],
 		})
 		setEditingTrigger(null)
 		setShowForm(false)
@@ -331,6 +338,19 @@ export default function TriggerManager() {
 										trigger emits
 									</small>
 								</label>
+							</div>
+
+							<div className={styles.formGroup}>
+								<TagSelector
+									selectedTagIds={formData.tagIds}
+									onChange={tagIds =>
+										setFormData({
+											...formData,
+											tagIds,
+										})
+									}
+									label='Tags'
+								/>
 							</div>
 
 							<div className={styles.formGroup}>

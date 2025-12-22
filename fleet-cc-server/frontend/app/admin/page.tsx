@@ -95,15 +95,14 @@ export default function AdminPage() {
 
 	return (
 		<div className={styles.container}>
-			<div className={styles.header}>
-				<h1>Admin Dashboard</h1>
-				<p className={styles.subtitle}>
-					Manage system settings and configurations
-				</p>
-			</div>
-
 			<div className={styles.layout}>
 				<nav className={styles.sidebar}>
+					<div className={styles.header}>
+						<h1>Admin Dashboard</h1>
+						<p className={styles.subtitle}>
+							Manage system settings and configurations
+						</p>
+					</div>
 					<div className={styles.navGroup}>
 						<div className={styles.groupHeader}>
 							Message Configuration
