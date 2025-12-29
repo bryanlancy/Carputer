@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { parseMarkdown } from '../../utils/markdown'
 import { formatDate } from '../../utils/dateFormat'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
+import { useAuth } from '../../contexts/AuthContext'
 import styles from './TemplateEditor.module.scss'
 
 interface TemplateEditorProps {
@@ -13,6 +15,22 @@ interface TemplateEditorProps {
 	notificationType?: 'default' | 'warning' | 'alert' | 'success'
 }
 
+interface DefaultDevice {
+	id: number
+	device_id: string
+	hostname: string | null
+	vin: string | null
+	hardware_rev: string | null
+	build_id: string | null
+	current_version: string | null
+	current_build_id: string | null
+	current_ip: string | null
+	uptime: number | string | null
+	services_status: Record<string, boolean> | null
+	status: string
+	last_seen: string | null
+}
+
 export default function TemplateEditor({
 	value,
 	onChange,
@@ -20,9 +38,44 @@ export default function TemplateEditor({
 	triggerType,
 	notificationType = 'default',
 }: TemplateEditorProps) {
+	const { session } = useAuth()
 	const [showHints, setShowHints] = useState(false)
+	const [defaultDevice, setDefaultDevice] = useState<DefaultDevice | null>(null)
+	const [deviceLoading, setDeviceLoading] = useState(true)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 	const cursorPositionRef = useRef<number>(0)
+
+	// Fetch default device data on mount
+	useEffect(() => {
+		const fetchDefaultDevice = async () => {
+			try {
+				const apiUrl = getApiUrl()
+				const response = await authenticatedFetch(
+					`${apiUrl}/api/admin/defaults/device`,
+					{
+						headers: {
+							Authorization: `Bearer ${session?.access_token}`,
+						},
+					}
+				)
+
+				if (response.ok) {
+					const device = await response.json()
+					setDefaultDevice(device)
+				} else {
+					// If fetch fails, continue with hardcoded fallback values
+					console.warn('Failed to fetch default device, using fallback values')
+				}
+			} catch (error) {
+				// If fetch fails, continue with hardcoded fallback values
+				console.warn('Error fetching default device, using fallback values:', error)
+			} finally {
+				setDeviceLoading(false)
+			}
+		}
+
+		fetchDefaultDevice()
+	}, [session])
 
 	// Default variables based on trigger type
 	const defaultVariables: Record<string, string[]> = {
@@ -174,32 +227,41 @@ export default function TemplateEditor({
 														s.trim()
 													)
 
-												// Get sample value
-												const sampleValues: Record<
-													string,
-													any
-												> = {
-													'device.id': '1',
-													'device.device_id':
-														'DEV-001',
-													'device.hostname':
-														'carputer-01',
-													'device.status': 'online',
-													timestamp: new Date(),
-													date: new Date(),
-													time: new Date(),
-													'event.type':
-														'device.online',
-													'user.id': 'user-123',
-													'user.email':
-														'user@example.com',
-													'user.name': 'John Doe',
+												// Get sample value from default device or fallback
+												const getSampleValue = (path: string): any => {
+													// Use default device data if available
+													if (defaultDevice) {
+														if (path === 'device.id') return String(defaultDevice.id)
+														if (path === 'device.device_id') return defaultDevice.device_id || 'default-device'
+														if (path === 'device.hostname') return defaultDevice.hostname || 'default-carputer'
+														if (path === 'device.status') return defaultDevice.status || 'online'
+														if (path === 'device.vin') return defaultDevice.vin || ''
+														if (path === 'device.hardware_rev') return defaultDevice.hardware_rev || ''
+														if (path === 'device.build_id') return defaultDevice.build_id || ''
+														if (path === 'device.current_version') return defaultDevice.current_version || ''
+														if (path === 'device.current_build_id') return defaultDevice.current_build_id || ''
+														if (path === 'device.current_ip') return defaultDevice.current_ip || ''
+														if (path === 'device.uptime') return defaultDevice.uptime ? String(defaultDevice.uptime) : ''
+														if (path === 'device.last_seen' && defaultDevice.last_seen) return new Date(defaultDevice.last_seen)
+													}
+													// Fallback to hardcoded values
+													const fallbackValues: Record<string, any> = {
+														'device.id': '1',
+														'device.device_id': 'DEV-001',
+														'device.hostname': 'carputer-01',
+														'device.status': 'online',
+														timestamp: new Date(),
+														date: new Date(),
+														time: new Date(),
+														'event.type': 'device.online',
+														'user.id': 'user-123',
+														'user.email': 'user@example.com',
+														'user.name': 'John Doe',
+													}
+													return fallbackValues[path] || new Date() // Default to current date for timestamp
 												}
 
-												let value =
-													sampleValues[
-														variablePath
-													] || new Date() // Default to current date for timestamp
+												let value = getSampleValue(variablePath)
 
 												// Process format pipes - everything after the first | is the format string
 												if (pipeParts.length > 0) {
@@ -218,30 +280,41 @@ export default function TemplateEditor({
 											}
 
 											// Simple variable access
-											const sampleValues: Record<
-												string,
-												string
-											> = {
-												'device.id': '1',
-												'device.device_id': 'DEV-001',
-												'device.hostname':
-													'carputer-01',
-												'device.status': 'online',
-												timestamp:
-													new Date().toLocaleString(),
-												date: new Date().toLocaleDateString(),
-												time: new Date().toLocaleTimeString(),
-												'event.type': 'device.online',
-												'user.id': 'user-123',
-												'user.email':
-													'user@example.com',
-												'user.name': 'John Doe',
+											const getSampleValue = (path: string): string => {
+												// Use default device data if available
+												if (defaultDevice) {
+													if (path === 'device.id') return String(defaultDevice.id)
+													if (path === 'device.device_id') return defaultDevice.device_id || 'default-device'
+													if (path === 'device.hostname') return defaultDevice.hostname || 'default-carputer'
+													if (path === 'device.status') return defaultDevice.status || 'online'
+													if (path === 'device.vin') return defaultDevice.vin || ''
+													if (path === 'device.hardware_rev') return defaultDevice.hardware_rev || ''
+													if (path === 'device.build_id') return defaultDevice.build_id || ''
+													if (path === 'device.current_version') return defaultDevice.current_version || ''
+													if (path === 'device.current_build_id') return defaultDevice.current_build_id || ''
+													if (path === 'device.current_ip') return defaultDevice.current_ip || ''
+													if (path === 'device.uptime') return defaultDevice.uptime ? String(defaultDevice.uptime) : ''
+													if (path === 'device.last_seen' && defaultDevice.last_seen) {
+														return new Date(defaultDevice.last_seen).toLocaleString()
+													}
+												}
+												// Fallback to hardcoded values
+												const fallbackValues: Record<string, string> = {
+													'device.id': '1',
+													'device.device_id': 'DEV-001',
+													'device.hostname': 'carputer-01',
+													'device.status': 'online',
+													timestamp: new Date().toLocaleString(),
+													date: new Date().toLocaleDateString(),
+													time: new Date().toLocaleTimeString(),
+													'event.type': 'device.online',
+													'user.id': 'user-123',
+													'user.email': 'user@example.com',
+													'user.name': 'John Doe',
+												}
+												return fallbackValues[path] || `[${path}]`
 											}
-											return (
-												sampleValues[
-													expression.trim()
-												] || `[${expression.trim()}]`
-											)
+											return getSampleValue(expression.trim())
 										} catch (error) {
 											return `[${expression.trim()}]`
 										}

@@ -115,12 +115,13 @@ export class DeviceStatusService {
 
   /**
    * Check if there are any devices currently online
-   * Returns the count of online devices
+   * Returns the count of online devices (excluding default device)
    */
   async hasOnlineDevices(): Promise<boolean> {
     const onlineCount = await this.prisma.device.count({
       where: {
         status: 'online',
+        is_default: false, // Exclude default device
       },
     });
     return onlineCount > 0;
@@ -134,13 +135,14 @@ export class DeviceStatusService {
     const now = new Date();
     const thresholdTime = new Date(now.getTime() - this.OFFLINE_THRESHOLD_MS);
 
-    // Find all devices that are online but haven't been seen recently
+    // Find all devices that are online but haven't been seen recently (excluding default device)
     const staleDevices = await this.prisma.device.findMany({
       where: {
         status: 'online',
         last_seen: {
           lt: thresholdTime,
         },
+        is_default: false, // Exclude default device
       },
       select: {
         id: true,
@@ -175,13 +177,37 @@ export class DeviceStatusService {
 
   /**
    * Get all devices with status checks (automatically marks offline devices)
+   * Excludes default device (used for template previews)
    */
   async getAllDevicesWithStatusCheck() {
-    // Update all stale devices
-    await this.updateAllOfflineDevices();
+    // Update all stale devices (excluding default device)
+    const now = new Date();
+    const thresholdTime = new Date(now.getTime() - this.OFFLINE_THRESHOLD_MS);
 
-    // Return all devices
+    // Find all devices that are online but haven't been seen recently (excluding default)
+    const staleDevices = await this.prisma.device.findMany({
+      where: {
+        status: 'online',
+        last_seen: {
+          lt: thresholdTime,
+        },
+        is_default: false, // Exclude default device
+      },
+      select: {
+        id: true,
+        last_seen: true,
+      },
+    });
+
+    for (const device of staleDevices) {
+      await this.updateDeviceStatusIfOffline(device.id);
+    }
+
+    // Return all devices except default device
     return this.prisma.device.findMany({
+      where: {
+        is_default: false, // Exclude default device from user-facing queries
+      },
       orderBy: [
         { status: 'asc' }, // online before offline
         { last_seen: 'desc' },

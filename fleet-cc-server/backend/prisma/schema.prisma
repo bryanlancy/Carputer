@@ -48,6 +48,9 @@ model Device {
   first_seen              DateTime?
   last_registration_attempt DateTime?
 
+  // Default device flag (for template previews)
+  is_default              Boolean   @default(false)
+
   // Relations
   commands                Command[]
   device_logs             DeviceLog[]
@@ -57,6 +60,7 @@ model Device {
   @@index([last_seen])
   @@index([mac_address])
   @@index([image_id])
+  @@index([is_default])
   @@map("devices")
 }
 

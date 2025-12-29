@@ -55,6 +55,48 @@ async function seed() {
 		await pool.query('DELETE FROM images')
 		console.log('✓ Cleared existing data')
 
+		// Seed default device FIRST (before images, before notifications)
+		// This device is used for template previews and should have id=1
+		console.log('Seeding default device (for template previews)...')
+		const defaultDeviceResult = await pool.query(
+			`INSERT INTO devices (
+				device_id, mac_address, hostname, vin, hardware_rev, build_id, current_build_id,
+				current_version, current_ip, status, authorized, authorized_at, authorized_by,
+				registration_method, uptime, services_status, first_seen, last_seen,
+				last_registration_attempt, is_default, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
+			RETURNING id, device_id`,
+			[
+				'default-device', // device_id
+				'00:00:00:00:00:00', // mac_address
+				'default-carputer', // hostname
+				'1DEFAULT0000000000', // vin
+				'rev1.0', // hardware_rev
+				'v1.0.0', // build_id
+				'v1.0.0', // current_build_id
+				'1.0.0', // current_version
+				'192.168.1.100', // current_ip
+				'online', // status
+				true, // authorized
+				new Date(), // authorized_at
+				'system', // authorized_by
+				'manual', // registration_method
+				86400, // uptime (1 day in seconds)
+				JSON.stringify({
+					carputer_hub: true,
+					carputer_ui: true,
+					network: true,
+				}), // services_status
+				new Date(), // first_seen
+				new Date(), // last_seen
+				new Date(), // last_registration_attempt
+				true, // is_default
+			]
+		)
+		console.log(
+			`✓ Seeded default device (id: ${defaultDeviceResult.rows[0].id}, device_id: ${defaultDeviceResult.rows[0].device_id})`
+		)
+
 		// Seed images table (consolidated with versions data)
 		console.log('Seeding images table...')
 		const images = [

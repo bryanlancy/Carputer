@@ -11,6 +11,7 @@ import TriggerManager from '../components/admin/TriggerManager'
 import ActionManager from '../components/admin/ActionManager'
 import TagManager from '../components/admin/TagManager'
 import ApiKeyManager from '../components/admin/ApiKeyManager'
+import DefaultDeviceSettings from '../components/admin/DefaultDeviceSettings'
 import styles from './page.module.scss'
 
 export default function SettingsPage() {
@@ -22,6 +23,7 @@ export default function SettingsPage() {
 		| 'wiring'
 		| 'tags'
 		| 'api-keys'
+		| 'defaults'
 	>('notifications')
 	const [isAdmin, setIsAdmin] = useState<boolean>(false)
 	const [loading, setLoading] = useState(true)
@@ -77,7 +79,8 @@ export default function SettingsPage() {
 				activeSection === 'messages' ||
 				activeSection === 'wiring' ||
 				activeSection === 'tags' ||
-				activeSection === 'api-keys'
+				activeSection === 'api-keys' ||
+				activeSection === 'defaults'
 			) {
 				setActiveSection('notifications')
 			}
@@ -229,6 +232,20 @@ export default function SettingsPage() {
 											API Keys
 										</button>
 									</li>
+									<li>
+										<button
+											className={
+												activeSection === 'defaults'
+													? styles.active
+													: ''
+											}
+											onClick={() =>
+												setActiveSection('defaults')
+											}>
+											<span className={styles.icon}>⚙️</span>
+											Defaults
+										</button>
+									</li>
 								</ul>
 							</div>
 							<div className={styles.navGroup}>
@@ -278,13 +295,17 @@ export default function SettingsPage() {
 					{isAdmin && activeSection === 'api-keys' && (
 						<ApiKeyManager onUnauthorized={() => checkAuth()} />
 					)}
+					{isAdmin && activeSection === 'defaults' && (
+						<DefaultDeviceSettings onUnauthorized={() => checkAuth()} />
+					)}
 					{!isAdmin &&
 						(activeSection === 'triggers' ||
 							activeSection === 'actions' ||
 							activeSection === 'messages' ||
 							activeSection === 'wiring' ||
 							activeSection === 'tags' ||
-							activeSection === 'api-keys') && (
+							activeSection === 'api-keys' ||
+							activeSection === 'defaults') && (
 							<div className={styles.errorContainer}>
 								<h2>Access Denied</h2>
 								<p>

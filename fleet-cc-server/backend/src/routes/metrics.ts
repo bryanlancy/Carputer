@@ -39,17 +39,21 @@ router.get('/overview', async (req, res) => {
 			return res.status(500).json({ error: 'Database connection not available' })
 		}
 
-		// Get device counts by status
+		// Get device counts by status (excluding default device)
 		const statusCounts = await prisma.device.groupBy({
 			by: ['status'],
+			where: {
+				is_default: false, // Exclude default device from counts
+			},
 			_count: true,
 		})
 
-		// Get version distribution
+		// Get version distribution (excluding default device)
 		const versionDistributionRaw = await prisma.device.groupBy({
 			by: ['current_build_id'],
 			where: {
 				current_build_id: { not: null },
+				is_default: false, // Exclude default device
 			},
 			_count: {
 				current_build_id: true,
@@ -76,7 +80,7 @@ router.get('/overview', async (req, res) => {
 			},
 		})
 
-		// Get online devices (status='online' AND seen in last 15 minutes)
+		// Get online devices (status='online' AND seen in last 15 minutes, excluding default device)
 		const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
 		const onlineDevices = await prisma.device.count({
 			where: {
@@ -84,6 +88,7 @@ router.get('/overview', async (req, res) => {
 				last_seen: {
 					gte: fifteenMinutesAgo,
 				},
+				is_default: false, // Exclude default device from counts
 			},
 		})
 

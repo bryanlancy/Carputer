@@ -30,6 +30,7 @@ import adminMessagesRoutes from './routes/admin/messages'
 import adminVerifyRoutes from './routes/admin/verify'
 import adminTagsRoutes from './routes/admin/tags'
 import adminApiKeysRoutes from './routes/admin/apiKeys'
+import adminDefaultsRoutes from './routes/admin/defaults'
 import authRoutes from './routes/auth'
 import realtimeRoutes, {
 	broadcastDeviceUpdate,
@@ -256,6 +257,7 @@ app.use(
 app.use('/api/admin/messages', authenticate, requireAuth, adminMessagesRoutes)
 app.use('/api/admin/tags', authenticate, requireAuth, adminTagsRoutes)
 app.use('/api/admin/api-keys', authenticate, requireAuth, adminApiKeysRoutes)
+app.use('/api/admin/defaults', authenticate, requireAuth, adminDefaultsRoutes)
 app.use('/api/realtime', authenticate, requireAuth, realtimeRoutes)
 
 // Set broadcast functions in deviceStatus service for offline detection
