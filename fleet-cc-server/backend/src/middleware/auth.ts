@@ -212,20 +212,24 @@ export const optionalAuth = authenticate
 /**
  * Required authentication middleware
  * Returns 401 if user is not authenticated
+ * Accepts either JWT user (req.user) or API key (req.apiKey)
  */
 export function requireAuth(
 	req: Request,
 	res: Response,
 	next: NextFunction
 ): void {
-	if (!req.user) {
+	// Allow either JWT user or API key authentication
+	if (!req.user && !req.apiKey) {
 		res.status(401).json({ error: 'Authentication required' })
 		return
 	}
 
-	// Update activity on authenticated requests (for routes using requireAuth)
-	const sessionActivityService = getSessionActivityService()
-	sessionActivityService.updateActivity(req.user.supabase_user_id)
+	// Update activity on authenticated requests (for routes using requireAuth with JWT)
+	if (req.user) {
+		const sessionActivityService = getSessionActivityService()
+		sessionActivityService.updateActivity(req.user.supabase_user_id)
+	}
 
 	next()
 }

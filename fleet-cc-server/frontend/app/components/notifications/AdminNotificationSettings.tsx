@@ -5,7 +5,13 @@ import NotificationTypeManager from './NotificationTypeManager'
 import MessageManager from '../admin/MessageManager'
 import styles from './AdminNotificationSettings.module.scss'
 
-export default function AdminNotificationSettings() {
+interface AdminNotificationSettingsProps {
+	onUnauthorized?: () => void
+}
+
+export default function AdminNotificationSettings({
+	onUnauthorized,
+}: AdminNotificationSettingsProps = {}) {
 	return (
 		<div className={styles.container}>
 			<div className={styles.header}>
@@ -19,7 +25,7 @@ export default function AdminNotificationSettings() {
 						Notifications define what kinds of notifications can be
 						sent.
 					</p>
-					<NotificationTypeManager />
+					<NotificationTypeManager onUnauthorized={onUnauthorized} />
 				</div>
 
 				<div className={styles.section}>
@@ -28,7 +34,7 @@ export default function AdminNotificationSettings() {
 						Messages (like emails) can be used in wiring actions
 						and support variable templating.
 					</p>
-					<MessageManager />
+					<MessageManager onUnauthorized={onUnauthorized} />
 				</div>
 			</div>
 		</div>

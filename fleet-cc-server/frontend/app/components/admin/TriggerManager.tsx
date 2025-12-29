@@ -20,7 +20,13 @@ interface Trigger {
 	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
-export default function TriggerManager() {
+interface TriggerManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function TriggerManager({
+	onUnauthorized,
+}: TriggerManagerProps = {}) {
 	const { session } = useAuth()
 	const [triggers, setTriggers] = useState<Trigger[]>([])
 	const [loading, setLoading] = useState(true)
@@ -56,8 +62,17 @@ export default function TriggerManager() {
 			if (response.ok) {
 				const data = await response.json()
 				setTriggers(data)
+			} else if (response.status === 403) {
+				setError('You do not have permission to access triggers')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				setError('Failed to load triggers')
+				const errorData = await response.json().catch(() => ({}))
+				setError(
+					errorData.error || 'Failed to load triggers'
+				)
 			}
 		} catch (err: any) {
 			console.error('Failed to load triggers:', err)
@@ -99,8 +114,14 @@ export default function TriggerManager() {
 
 			if (response.ok) {
 				await loadTriggers()
+			} else if (response.status === 403) {
+				setError('You do not have permission to delete triggers')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(errorData.error || 'Failed to delete trigger')
 			}
 		} catch (err: any) {
@@ -168,8 +189,14 @@ export default function TriggerManager() {
 					tagIds: [],
 				})
 				await loadTriggers()
+			} else if (response.status === 403) {
+				setError('You do not have permission to modify triggers')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(
 					errorData.error ||
 						errorData.details?.[0]?.message ||

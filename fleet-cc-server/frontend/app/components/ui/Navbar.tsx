@@ -85,17 +85,6 @@ export default function Navbar() {
 						}>
 						Settings
 					</Link>
-					{isAdmin && (
-						<Link
-							href='/admin'
-							className={
-								pathname === '/admin'
-									? styles.active
-									: styles.navLink
-							}>
-							Admin
-						</Link>
-					)}
 					{user && (
 						<div className={styles.userSection}>
 							<button

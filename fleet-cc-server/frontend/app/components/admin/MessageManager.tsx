@@ -22,7 +22,13 @@ interface Message {
 	updated_at?: string
 }
 
-export default function MessageManager() {
+interface MessageManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function MessageManager({
+	onUnauthorized,
+}: MessageManagerProps = {}) {
 	const { session } = useAuth()
 	const [messages, setMessages] = useState<Message[]>([])
 	const [loading, setLoading] = useState(true)
@@ -60,8 +66,15 @@ export default function MessageManager() {
 			if (response.ok) {
 				const data = await response.json()
 				setMessages(data)
+			} else if (response.status === 403) {
+				setError('You do not have permission to access messages')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				setError('Failed to load messages')
+				const errorData = await response.json().catch(() => ({}))
+				setError(errorData.error || 'Failed to load messages')
 			}
 		} catch (err: any) {
 			console.error('Failed to load messages:', err)
@@ -105,8 +118,14 @@ export default function MessageManager() {
 
 			if (response.ok) {
 				await loadMessages()
+			} else if (response.status === 403) {
+				setError('You do not have permission to delete messages')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(errorData.error || 'Failed to delete message')
 			}
 		} catch (err: any) {
@@ -185,8 +204,14 @@ export default function MessageManager() {
 					enabled: true,
 				})
 				await loadMessages()
+			} else if (response.status === 403) {
+				setError('You do not have permission to modify messages')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(
 					errorData.error ||
 						errorData.details?.[0]?.message ||

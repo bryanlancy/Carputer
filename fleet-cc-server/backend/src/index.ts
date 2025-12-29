@@ -29,6 +29,7 @@ import adminWorkspacesRoutes from './routes/admin/workspaces'
 import adminMessagesRoutes from './routes/admin/messages'
 import adminVerifyRoutes from './routes/admin/verify'
 import adminTagsRoutes from './routes/admin/tags'
+import adminApiKeysRoutes from './routes/admin/apiKeys'
 import authRoutes from './routes/auth'
 import realtimeRoutes, {
 	broadcastDeviceUpdate,
@@ -42,6 +43,8 @@ import {
 import { initializeNotificationEventListeners } from './events/notificationEvents'
 import { initializeScheduledNotificationsWorker } from './jobs/scheduledNotifications'
 import { authenticate, requireAuth } from './middleware/auth'
+import { authenticateApiKey } from './middleware/apiKeyAuth'
+import { checkApiKeyPermissions } from './middleware/apiKeyPermissions'
 import { getSessionActivityService } from './services/sessionActivity'
 
 // Initialize Express app
@@ -122,6 +125,8 @@ app.use((req, res, next) => {
 // Authentication middleware - runs on all routes but doesn't block
 // Individual routes can use requireAuth to enforce authentication
 app.use(authenticate)
+// API key authentication - runs after JWT auth, only authenticates if no JWT user
+app.use(authenticateApiKey)
 
 // Serve Swagger JSON spec for frontend (must be before Swagger UI middleware)
 app.get('/api-docs/swagger.json', (req, res) => {
@@ -218,12 +223,14 @@ app.use('/api/devices', deviceRoutes)
 // Protected routes (require authentication)
 // authenticate middleware extracts user from token and sets req.user
 // requireAuth middleware checks if req.user exists and returns 401 if not
+// API key middleware allows API keys as alternative authentication
+// Permission middleware filters responses based on API key permissions
 app.use('/api/auth', authenticate, requireAuth, authRoutes)
-app.use('/api/commands', authenticate, requireAuth, commandRoutes)
-app.use('/api/metrics', authenticate, requireAuth, metricsRoutes)
-app.use('/api/images', authenticate, requireAuth, imageRoutes)
-app.use('/api/verified-images', authenticate, requireAuth, verifiedImageRoutes)
-app.use('/api/notifications', authenticate, requireAuth, notificationRoutes)
+app.use('/api/commands', authenticate, requireAuth, checkApiKeyPermissions, commandRoutes)
+app.use('/api/metrics', authenticate, requireAuth, checkApiKeyPermissions, metricsRoutes)
+app.use('/api/images', authenticate, requireAuth, checkApiKeyPermissions, imageRoutes)
+app.use('/api/verified-images', authenticate, requireAuth, checkApiKeyPermissions, verifiedImageRoutes)
+app.use('/api/notifications', authenticate, requireAuth, checkApiKeyPermissions, notificationRoutes)
 app.use('/api/admin/verify', authenticate, requireAuth, adminVerifyRoutes)
 app.use(
 	'/api/admin/notifications',
@@ -248,6 +255,7 @@ app.use(
 )
 app.use('/api/admin/messages', authenticate, requireAuth, adminMessagesRoutes)
 app.use('/api/admin/tags', authenticate, requireAuth, adminTagsRoutes)
+app.use('/api/admin/api-keys', authenticate, requireAuth, adminApiKeysRoutes)
 app.use('/api/realtime', authenticate, requireAuth, realtimeRoutes)
 
 // Set broadcast functions in deviceStatus service for offline detection

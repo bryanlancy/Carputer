@@ -1,8 +1,45 @@
 -- Notification Templating and Trigger System Migration
 -- Adds templating, triggers, events, wiring, and notification feed support
 
--- Add message_template to notification_rules
-ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS message_template TEXT;
+-- Create notification_rules table if it doesn't exist
+-- This table will later be merged into notification_types in migration 013
+-- Create table without foreign key first (type_code may not exist if migration 013 already ran)
+CREATE TABLE IF NOT EXISTS notification_rules (
+  id SERIAL PRIMARY KEY,
+  notification_type_code VARCHAR(100) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  target_users JSONB,
+  message_template TEXT,
+  priority INTEGER DEFAULT 0,
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Add foreign key constraint only if type_code column exists in notification_types
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notification_types' AND column_name = 'type_code'
+  ) THEN
+    -- Drop constraint if it exists
+    ALTER TABLE notification_rules DROP CONSTRAINT IF EXISTS notification_rules_notification_type_code_fkey;
+    -- Add foreign key constraint
+    ALTER TABLE notification_rules
+      ADD CONSTRAINT notification_rules_notification_type_code_fkey
+      FOREIGN KEY (notification_type_code) REFERENCES notification_types(type_code) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_notification_rules_type_code ON notification_rules(notification_type_code);
+CREATE INDEX IF NOT EXISTS idx_notification_rules_enabled ON notification_rules(enabled);
+
+-- Trigger to update updated_at timestamp for notification_rules
+DROP TRIGGER IF EXISTS update_notification_rules_updated_at ON notification_rules;
+CREATE TRIGGER update_notification_rules_updated_at BEFORE UPDATE ON notification_rules
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Remove read and read_at from notifications table (user-specific only)
 ALTER TABLE notifications DROP COLUMN IF EXISTS read;

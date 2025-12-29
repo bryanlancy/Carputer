@@ -37,10 +37,13 @@ const autoDeviceRegistrationSchema = z.object({
 	ip: z.string().optional(),
 })
 
-// Heartbeat schema
+// Heartbeat schema - macAddress is required for device identification
 const heartbeatSchema = z.object({
-	deviceId: z.string().min(1).optional(),
-	macAddress: z.string().optional(),
+	macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, {
+		message:
+			'MAC address must be in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX',
+	}),
+	deviceId: z.string().min(1).optional(), // Optional, for backward compatibility
 	version: z.string().optional(),
 	buildId: z.string().optional(),
 	uptime: z.number().optional(),
@@ -359,9 +362,8 @@ router.post('/register/auto', async (req, res) => {
 		if (isNewDevice || wasOffline) {
 			try {
 				await handleDeviceOnlineEvent(device.id, {
-					device_id: device.id,
 					hostname: device.hostname,
-					device_id_string: device.device_id,
+					mac_address: device.mac_address,
 					ip: device.current_ip,
 					registration_method: device.registration_method,
 				})
@@ -557,36 +559,65 @@ router.post('/register', async (req, res) => {
  *   post:
  *     summary: Device heartbeat
  *     description: |
- *       Devices send periodic heartbeats to indicate they're online.
- *       Supports authentication by MAC address or device ID.
- *       Only authorized devices can send heartbeats.
+ *       Devices send periodic heartbeats to indicate they're online. MAC address is required for device identification (primary identifier). Only authorized devices can send heartbeats.
+ *
+ *       Authentication Options: Device Authentication (Legacy) uses X-Device-MAC or X-Device-ID headers. API Key Authentication uses Authorization header with Bearer token (API key). When using API Key authentication, the API key must be sent in Authorization header as "Authorization: Bearer <api-key>", the MAC address must be in the request body (not headers), the API key is used for authorization, and MAC address is used for device identification.
  *     tags: [Devices]
  *     security:
- *       - deviceAuth: []
- *       - deviceIdAuth: []
+ *       - bearerAuth: []  # Primary: API key or JWT token authentication
+ *       - deviceAuth: []  # Legacy: Device MAC address authentication
+ *       - deviceIdAuth: []  # Legacy: Device ID authentication
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - macAddress
  *             properties:
- *               deviceId:
- *                 type: string
  *               macAddress:
  *                 type: string
+ *                 pattern: '^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+ *                 description: Required - MAC address for device identification. Must be in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX. When using API key authentication, this must be in the request body.
+ *                 example: "AA:BB:CC:DD:EE:FF"
+ *               deviceId:
+ *                 type: string
+ *                 description: Optional - for backward compatibility
  *               version:
  *                 type: string
+ *                 description: Device version string
  *               buildId:
  *                 type: string
+ *                 description: Build ID
  *               uptime:
  *                 type: number
+ *                 description: Device uptime in seconds
  *               ip:
  *                 type: string
+ *                 description: Current IP address
  *               services:
  *                 type: object
  *                 additionalProperties:
  *                   type: boolean
+ *                 description: Service status map
+ *           examples:
+ *             apiKeyAuth:
+ *               summary: Using API Key Authentication
+ *               description: Example request when using API key authentication
+ *               value:
+ *                 macAddress: "AA:BB:CC:DD:EE:FF"
+ *                 version: "1.0.0"
+ *                 buildId: "build-123"
+ *                 uptime: 3600
+ *                 ip: "192.168.1.100"
+ *             deviceAuth:
+ *               summary: Using Device Authentication (Legacy)
+ *               description: Example request when using device authentication headers
+ *               value:
+ *                 macAddress: "AA:BB:CC:DD:EE:FF"
+ *                 deviceId: "device-123"
+ *                 version: "1.0.0"
  *     responses:
  *       200:
  *         description: Heartbeat received successfully
@@ -636,36 +667,83 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 		const data = heartbeatSchema.parse(req.body)
 		const prisma = req.prisma
 
-		const macAddress =
-			(req.headers['x-device-mac'] as string) || data.macAddress
+		// When API key authentication is used, MAC address must come from request body
+		// When device authentication is used (via headers), MAC address can come from header or body
+		const isApiKeyAuth = !!req.apiKey
+		const macAddressFromHeader = req.headers['x-device-mac'] as string
+		const macAddressFromBody = data.macAddress
+
+		// If API key is used, prioritize body MAC address (required for device identification)
+		// If device auth is used, allow header or body
+		const macAddress = isApiKeyAuth
+			? macAddressFromBody
+			: (macAddressFromHeader || macAddressFromBody)
+
 		const deviceId = (req.headers['x-device-id'] as string) || data.deviceId
 
-		if (!macAddress && !deviceId) {
+		// Validate MAC address format and reject template placeholders
+		if (!macAddress) {
 			return res.status(400).json({
-				error: 'Device identifier required',
+				error: 'MAC address required',
+				message: isApiKeyAuth
+					? 'macAddress is required in request body for device identification when using API key authentication'
+					: 'macAddress is required in request body or x-device-mac header for device identification',
+			})
+		}
+
+		// Check if MAC address looks like a UUID (API key format) - common mistake
+		const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+		if (uuidRegex.test(macAddress)) {
+			console.error('[Heartbeat] Invalid MAC address - appears to be an API key (UUID):', {
+				headerValue: macAddressFromHeader,
+				bodyValue: macAddressFromBody,
+				isApiKeyAuth: isApiKeyAuth,
+			})
+			return res.status(400).json({
+				error: 'Invalid MAC address format',
 				message:
-					'Provide either macAddress or deviceId in request body or headers',
+					'The provided MAC address appears to be an API key. API keys should be sent in the Authorization header (Bearer <key>), and the MAC address should be in the request body in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX',
 			})
 		}
 
-		// Find device by MAC address (preferred) or device ID
-		let device = null
-		if (macAddress) {
-			device = await prisma.device.findUnique({
-				where: { mac_address: macAddress },
+		// Check for template placeholders or invalid MAC address format
+		if (macAddress.includes('{{') || macAddress.includes('${')) {
+			console.error('[Heartbeat] Invalid MAC address format - appears to contain template placeholder:', {
+				headerValue: macAddressFromHeader,
+				bodyValue: macAddressFromBody,
+			})
+			return res.status(400).json({
+				error: 'Invalid MAC address format',
+				message:
+					'MAC address appears to contain a template placeholder. Please provide a valid MAC address in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX',
 			})
 		}
 
-		if (!device && deviceId) {
-			device = await prisma.device.findUnique({
-				where: { device_id: deviceId },
+		// Validate MAC address format matches regex
+		const macAddressRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/
+		if (!macAddressRegex.test(macAddress)) {
+			console.error('[Heartbeat] Invalid MAC address format:', {
+				headerValue: macAddressFromHeader,
+				bodyValue: macAddressFromBody,
+			})
+			return res.status(400).json({
+				error: 'Invalid MAC address format',
+				message:
+					'MAC address must be in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX',
 			})
 		}
+
+		console.log('[Heartbeat] Looking up device with MAC address:', macAddress)
+		// Find device by MAC address (primary identifier)
+		const device = await prisma.device.findUnique({
+			where: { mac_address: macAddress },
+		})
 
 		if (!device) {
+			console.warn('[Heartbeat] Device not found for MAC address:', macAddress)
 			return res.status(404).json({
 				error: 'Device not found',
-				message: 'Device must be registered before sending heartbeats',
+				message: `Device with MAC address ${macAddress} must be registered before sending heartbeats`,
 			})
 		}
 
@@ -686,9 +764,11 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 			? BigInt(Math.round(Number(data.uptime)))
 			: device.uptime
 
+		// Ensure mac_address is set if it wasn't already
 		const updatedDevice = await prisma.device.update({
 			where: { id: device.id },
 			data: {
+				mac_address: macAddress, // Ensure mac_address is set/updated
 				last_seen: new Date(),
 				current_version: data.version || device.current_version,
 				current_build_id: data.buildId || device.current_build_id,
@@ -706,9 +786,8 @@ router.post('/heartbeat', authenticateDevice, async (req, res) => {
 		if (wasOffline) {
 			try {
 				await handleDeviceOnlineEvent(device.id, {
-					device_id: device.id,
 					hostname: device.hostname,
-					device_id_string: device.device_id,
+					mac_address: macAddress,
 					ip: device.current_ip,
 					uptime: data.uptime,
 					version: data.version,

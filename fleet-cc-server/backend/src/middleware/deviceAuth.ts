@@ -20,15 +20,33 @@ interface DeviceAuthRequest extends Request {
  * Expects either:
  * - X-Device-MAC header (for automatic registration/authentication)
  * - X-Device-ID header (for existing registered devices)
+ * - API key authentication (req.apiKey) - in this case, MAC address should be in request body
  */
 export function authenticateDevice(req: DeviceAuthRequest, res: Response, next: NextFunction) {
+  // If API key authentication is used, skip device header requirement
+  // MAC address will come from request body instead
+  if ((req as any).apiKey) {
+    // API key authenticated - device identification will be done via MAC address in body
+    return next();
+  }
+
   const macAddress = req.headers['x-device-mac'] as string;
   const deviceId = req.headers['x-device-id'] as string || req.body?.deviceId;
 
   if (!macAddress && !deviceId) {
     return res.status(401).json({
       error: 'Device authentication required',
-      message: 'Provide either X-Device-MAC or X-Device-ID header'
+      message: 'Provide either X-Device-MAC or X-Device-ID header, or use API key authentication'
+    });
+  }
+
+  // Validate MAC address if provided (check for template placeholders)
+  if (macAddress && (macAddress.includes('{{') || macAddress.includes('${'))) {
+    console.error('[DeviceAuth] Invalid MAC address - contains template placeholder:', macAddress);
+    return res.status(400).json({
+      error: 'Invalid MAC address format',
+      message: 'MAC address appears to contain a template placeholder. Please provide a valid MAC address.',
+      receivedValue: macAddress,
     });
   }
 

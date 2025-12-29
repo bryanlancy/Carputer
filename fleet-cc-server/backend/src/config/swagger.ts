@@ -2,11 +2,11 @@ import swaggerJsdoc from 'swagger-jsdoc';
 
 const options: swaggerJsdoc.Options = {
   definition: {
-    openapi: '3.0.0',
+    openapi: '3.1.0',
     info: {
       title: 'Fleet Command & Control API',
       version: '1.0.0',
-      description: 'API documentation for the Fleet Command & Control server. This API manages carputer devices, images, commands, and metrics.\n\n**Authentication**: Most endpoints require a JWT Bearer token. Get your token by logging in via the frontend or directly via GoTrue at `/auth/v1/token?grant_type=password`.\n\n**Postman Import**: Import this API into Postman by using the OpenAPI JSON at `/api-docs/swagger.json`.',
+      description: 'API documentation for the Fleet Command & Control server. This API manages carputer devices, images, commands, and metrics. Most endpoints require authentication via API Key (Recommended) or JWT Token. For API Key: Use your API key in the Authorization header as "Bearer <api-key>". API keys can be created and managed via the admin interface. For JWT Token: Get a JWT token by logging in via the frontend or directly via GoTrue at /auth/v1/token?grant_type=password. To import into Postman: Use the OpenAPI JSON at /api-docs/swagger.json and select "Bearer Token" as the authentication type.',
       contact: {
         name: 'API Support',
       },
@@ -22,8 +22,8 @@ const options: swaggerJsdoc.Options = {
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description: 'JWT token obtained from Supabase Auth (GoTrue). Get token by logging in at /login or via POST /auth/v1/token?grant_type=password',
+          bearerFormat: 'JWT or API Key',
+          description: 'Authentication using Bearer token. Supports both JWT tokens (from Supabase Auth/GoTrue) and API keys. For API keys: Use the API key value directly as the Bearer token (format: Authorization: Bearer <api-key>). API keys can be created and managed via the admin API key management interface. For JWT tokens: Get token by logging in at /login or via POST /auth/v1/token?grant_type=password.',
         },
         deviceAuth: {
           type: 'apiKey',

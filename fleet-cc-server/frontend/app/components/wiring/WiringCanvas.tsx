@@ -575,16 +575,6 @@ export default function WiringCanvas({
 		internalNodesRef.current = nodes
 		if (nodesRef) {
 			nodesRef.current = nodes
-			// Debug: Log branch node configs when nodes change
-			nodes.forEach((node: any) => {
-				if (node.type === 'branch' && node.data?.config) {
-					console.log('[WiringCanvas] Nodes updated, branch node config:', {
-						nodeId: node.id,
-						config: node.data.config,
-						fieldPath: node.data.config.fieldPath,
-					})
-				}
-			})
 		}
 		// Trigger validation when nodes change (including config changes)
 		// This ensures validation runs when node configs are updated via updateNodeConfig
@@ -974,7 +964,7 @@ export default function WiringCanvas({
 						onClick={handleAddBranchNode}
 						className={styles.toolbarButton}
 						title="Add Branch Node">
-						Branch ⑂
+						Branch <span className={styles.branchIcon}>⑂</span>
 					</button>
 				</div>
 			)}

@@ -19,9 +19,16 @@
 --   trigger_type (removed, handled by wiring system)
 --   trigger_config (removed, handled by wiring system)
 
--- Step 1: Rename type_name to name
-ALTER TABLE notification_types
-RENAME COLUMN type_name TO name;
+-- Step 1: Rename type_name to name (only if column exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notification_types' AND column_name = 'type_name'
+  ) THEN
+    ALTER TABLE notification_types RENAME COLUMN type_name TO name;
+  END IF;
+END $$;
 
 -- Step 2: Add columns from notification_rules that don't exist in notification_types
 ALTER TABLE notification_types
@@ -34,14 +41,24 @@ ADD COLUMN IF NOT EXISTS variable_schema JSONB;
 -- For each notification_rule, update the corresponding notification_type
 -- This merges the rule configuration into the type
 -- NOTE: This must happen BEFORE we drop type_code
-UPDATE notification_types nt
-SET
-  target_users = COALESCE(nt.target_users, nr.target_users),
-  message_template = COALESCE(nt.message_template, nr.message_template),
-  priority = COALESCE(nt.priority, nr.priority)
-FROM notification_rules nr
-WHERE nt.type_code = nr.notification_type_code
-  AND (nr.target_users IS NOT NULL OR nr.message_template IS NOT NULL OR nr.priority IS NOT NULL);
+-- Only run if both notification_rules table and type_code column exist
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notification_rules')
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'notification_types' AND column_name = 'type_code'
+     ) THEN
+    UPDATE notification_types nt
+    SET
+      target_users = COALESCE(nt.target_users, nr.target_users),
+      message_template = COALESCE(nt.message_template, nr.message_template),
+      priority = COALESCE(nt.priority, nr.priority)
+    FROM notification_rules nr
+    WHERE nt.type_code = nr.notification_type_code
+      AND (nr.target_users IS NOT NULL OR nr.message_template IS NOT NULL OR nr.priority IS NOT NULL);
+  END IF;
+END $$;
 
 -- Step 4: Drop the notification_rules table (data has been merged into notification_types)
 -- First, drop any foreign key constraints that reference notification_rules
@@ -56,6 +73,7 @@ ALTER TABLE IF EXISTS notification_rules DROP CONSTRAINT IF EXISTS notification_
 DROP TABLE IF EXISTS notification_rules CASCADE;
 
 -- Step 5: Remove columns that are no longer needed from notification_types
+-- These are safe to drop with IF EXISTS
 ALTER TABLE notification_types
 DROP COLUMN IF EXISTS type_code,
 DROP COLUMN IF EXISTS severity,

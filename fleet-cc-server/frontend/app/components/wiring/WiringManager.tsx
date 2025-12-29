@@ -40,7 +40,13 @@ interface WiringConfiguration {
 	viewport?: any
 }
 
-export default function WiringManager() {
+interface WiringManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function WiringManager({
+	onUnauthorized,
+}: WiringManagerProps = {}) {
 	const { session } = useAuth()
 	const [workspaces, setWorkspaces] = useState<Workspace[]>([])
 	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<
@@ -110,10 +116,20 @@ export default function WiringManager() {
 
 			if (response.ok) {
 				const data = await response.json()
-				setWorkspaces(data)
-				if (data.length > 0 && !selectedWorkspaceId) {
-					setSelectedWorkspaceId(data[0].id)
+				// Deduplicate workspaces by name (keep the first occurrence)
+				const uniqueWorkspaces = Array.from(
+					new Map(data.map((w: Workspace) => [w.name, w])).values()
+				)
+				setWorkspaces(uniqueWorkspaces)
+				if (uniqueWorkspaces.length > 0 && !selectedWorkspaceId) {
+					setSelectedWorkspaceId(uniqueWorkspaces[0].id)
 				}
+			} else if (response.status === 403) {
+				setError('You do not have permission to access wiring')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			}
 		} catch (err: any) {
 			console.error('Failed to load workspaces:', err)
@@ -298,14 +314,6 @@ export default function WiringManager() {
 				// Merge node_config into each node's data.config
 				const nodesWithConfig = (data.wiring.nodes || []).map((node: any) => {
 					if (nodeConfig[node.id]) {
-						// Debug: Log branch node configs being loaded
-						if (node.type === 'branch') {
-							console.log('[WiringManager] Loading branch node config:', {
-								nodeId: node.id,
-								config: nodeConfig[node.id],
-								fieldPath: nodeConfig[node.id].fieldPath,
-							})
-						}
 						return {
 							...node,
 							data: {
@@ -402,39 +410,11 @@ export default function WiringManager() {
 			const nodes = nodesRef.current || wiringConfig?.nodes || []
 			const edges = edgesRef.current || wiringConfig?.edges || []
 
-			// Debug: Log all branch nodes before extracting config
-			nodes.forEach((node: any) => {
-				if (node.type === 'branch') {
-					console.log('[WiringManager] Branch node before config extraction:', {
-						nodeId: node.id,
-						hasConfig: !!node.data?.config,
-						config: node.data?.config,
-						fieldPath: node.data?.config?.fieldPath,
-						allConfigKeys: node.data?.config ? Object.keys(node.data.config) : [],
-					})
-				}
-			})
-
 			// Extract node_config from nodes (node-specific configurations like notification_id, message_code, command)
 			const nodeConfig: Record<string, any> = {}
 			nodes.forEach((node: any) => {
 				if (node.data?.config && Object.keys(node.data.config).length > 0) {
 					nodeConfig[node.id] = node.data.config
-					// Debug: Log branch node configs
-					if (node.type === 'branch') {
-						console.log('[WiringManager] Saving branch node config:', {
-							nodeId: node.id,
-							config: node.data.config,
-							fieldPath: node.data.config.fieldPath,
-							allKeys: Object.keys(node.data.config),
-						})
-					}
-				} else if (node.type === 'branch') {
-					console.warn('[WiringManager] Branch node has no config:', {
-						nodeId: node.id,
-						hasData: !!node.data,
-						dataKeys: node.data ? Object.keys(node.data) : [],
-					})
 				}
 			})
 

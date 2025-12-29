@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { parseMarkdown } from '../../utils/markdown'
 import { formatDate } from '../../utils/dateFormat'
 import styles from './TemplateEditor.module.scss'
@@ -21,6 +21,8 @@ export default function TemplateEditor({
 	notificationType = 'default',
 }: TemplateEditorProps) {
 	const [showHints, setShowHints] = useState(false)
+	const textareaRef = useRef<HTMLTextAreaElement>(null)
+	const cursorPositionRef = useRef<number>(0)
 
 	// Default variables based on trigger type
 	const defaultVariables: Record<string, string[]> = {
@@ -43,16 +45,49 @@ export default function TemplateEditor({
 			? defaultVariables[triggerType] || []
 			: []
 
+	const handleTextareaFocus = () => {
+		if (textareaRef.current) {
+			cursorPositionRef.current = textareaRef.current.selectionStart
+		}
+	}
+
+	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+		onChange(e.target.value)
+		if (textareaRef.current) {
+			cursorPositionRef.current = textareaRef.current.selectionStart
+		}
+	}
+
+	const handleTextareaClick = () => {
+		if (textareaRef.current) {
+			cursorPositionRef.current = textareaRef.current.selectionStart
+		}
+	}
+
+	const handleTextareaKeyUp = () => {
+		if (textareaRef.current) {
+			cursorPositionRef.current = textareaRef.current.selectionStart
+		}
+	}
+
 	const insertVariable = (variable: string) => {
-		const cursorPos =
-			(document.activeElement as HTMLTextAreaElement)?.selectionStart ||
-			value.length
+		const cursorPos = cursorPositionRef.current
 		const newValue =
 			value.slice(0, cursorPos) +
 			`{{${variable}}}` +
 			value.slice(cursorPos)
 		onChange(newValue)
 		setShowHints(false)
+
+		// Restore focus and set cursor position after the inserted variable
+		setTimeout(() => {
+			if (textareaRef.current) {
+				textareaRef.current.focus()
+				const newCursorPos = cursorPos + `{{${variable}}}`.length
+				textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+				cursorPositionRef.current = newCursorPos
+			}
+		}, 0)
 	}
 
 	return (
@@ -102,8 +137,12 @@ export default function TemplateEditor({
 			)}
 
 			<textarea
+				ref={textareaRef}
 				value={value}
-				onChange={e => onChange(e.target.value)}
+				onChange={handleTextareaChange}
+				onFocus={handleTextareaFocus}
+				onClick={handleTextareaClick}
+				onKeyUp={handleTextareaKeyUp}
 				placeholder='Enter message template with {{variable}} placeholders...'
 				className={styles.textarea}
 				rows={4}

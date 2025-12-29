@@ -21,7 +21,13 @@ interface Action {
 	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
-export default function ActionManager() {
+interface ActionManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function ActionManager({
+	onUnauthorized,
+}: ActionManagerProps = {}) {
 	const { session } = useAuth()
 	const [actions, setActions] = useState<Action[]>([])
 	const [loading, setLoading] = useState(true)
@@ -58,8 +64,15 @@ export default function ActionManager() {
 			if (response.ok) {
 				const data = await response.json()
 				setActions(data)
+			} else if (response.status === 403) {
+				setError('You do not have permission to access actions')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				setError('Failed to load actions')
+				const errorData = await response.json().catch(() => ({}))
+				setError(errorData.error || 'Failed to load actions')
 			}
 		} catch (err: any) {
 			console.error('Failed to load actions:', err)
@@ -102,8 +115,14 @@ export default function ActionManager() {
 
 			if (response.ok) {
 				await loadActions()
+			} else if (response.status === 403) {
+				setError('You do not have permission to delete actions')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(errorData.error || 'Failed to delete action')
 			}
 		} catch (err: any) {
@@ -173,8 +192,14 @@ export default function ActionManager() {
 					tagIds: [],
 				})
 				await loadActions()
+			} else if (response.status === 403) {
+				setError('You do not have permission to modify actions')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
-				const errorData = await response.json()
+				const errorData = await response.json().catch(() => ({}))
 				setError(
 					errorData.error ||
 						errorData.details?.[0]?.message ||

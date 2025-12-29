@@ -314,14 +314,6 @@ export default function BranchNode({
 		// Update ref to track what we've synced
 		lastSyncedConfigRef.current = configString
 
-		// Debug: Log config values
-		console.log('[BranchNode] Syncing config:', {
-			fieldPath: effectiveConfig.fieldPath,
-			operator: effectiveConfig.operator,
-			logicType: effectiveConfig.logicType,
-			currentFieldPath: fieldPath,
-		})
-
 		// Sync state from config - always update if config has the value
 		if (effectiveConfig.logicType !== undefined) {
 			setLogicType(effectiveConfig.logicType)
@@ -354,9 +346,8 @@ export default function BranchNode({
 
 	const updateNodeConfig = (updates: Record<string, string>) => {
 		if (nodeId) {
-			console.log('[BranchNode] updateNodeConfig called:', { nodeId, updates })
 			setNodes(nds => {
-				const updatedNodes = nds.map(node =>
+				return nds.map(node =>
 					node.id === nodeId
 						? {
 								...node,
@@ -370,16 +361,6 @@ export default function BranchNode({
 						  }
 						: node
 				)
-				// Debug: Log the updated node
-				const updatedNode = updatedNodes.find(n => n.id === nodeId)
-				if (updatedNode) {
-					console.log('[BranchNode] Node after update:', {
-						nodeId: updatedNode.id,
-						config: updatedNode.data?.config,
-						fieldPath: updatedNode.data?.config?.fieldPath,
-					})
-				}
-				return updatedNodes
 			})
 		}
 	}
@@ -390,7 +371,6 @@ export default function BranchNode({
 	}
 
 	const handleFieldChange = (value: string) => {
-		console.log('[BranchNode] Field changed to:', value)
 		setFieldPath(value)
 
 		// Check if it's a timestamp subfield and extract the option

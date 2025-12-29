@@ -32,6 +32,14 @@ CREATE INDEX IF NOT EXISTS idx_notification_instances_created_at ON notification
 ALTER TABLE user_notifications
   DROP CONSTRAINT IF EXISTS user_notifications_notification_id_fkey;
 
+-- Clean up orphaned user_notifications that reference non-existent notification_instances
+DELETE FROM user_notifications
+WHERE notification_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_instances WHERE id = user_notifications.notification_id
+  );
+
+-- Now add the foreign key constraint
 ALTER TABLE user_notifications
   ADD CONSTRAINT user_notifications_notification_id_fkey
   FOREIGN KEY (notification_id) REFERENCES notification_instances(id) ON DELETE CASCADE;

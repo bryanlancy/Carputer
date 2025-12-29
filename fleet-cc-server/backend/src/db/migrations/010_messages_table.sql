@@ -30,6 +30,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_update_messages_updated_at ON messages;
 CREATE TRIGGER trigger_update_messages_updated_at
   BEFORE UPDATE ON messages
   FOR EACH ROW

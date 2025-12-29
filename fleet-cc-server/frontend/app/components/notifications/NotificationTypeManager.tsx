@@ -27,7 +27,13 @@ interface Notification {
 	tags?: Array<{ id: number; name: string; color?: string | null }>
 }
 
-export default function NotificationTypeManager() {
+interface NotificationTypeManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function NotificationTypeManager({
+	onUnauthorized,
+}: NotificationTypeManagerProps = {}) {
 	const { session } = useAuth()
 	const [types, setTypes] = useState<Notification[]>([])
 	const [loading, setLoading] = useState(true)
@@ -81,8 +87,12 @@ export default function NotificationTypeManager() {
 			if (response.ok) {
 				const data = await response.json()
 				setTypes(data)
-			} else if (response.status === 401 || response.status === 403) {
-				setError('Unauthorized. Please check your permissions.')
+			} else if (response.status === 403) {
+				setError('You do not have permission to access notification types')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
 				setError(
 					`Failed to load notification types: ${response.statusText}`
@@ -175,6 +185,30 @@ export default function NotificationTypeManager() {
 		setEditingType(type)
 		setFormData({
 			name: type.name,
+			description: type.description || '',
+			enabled: type.enabled,
+			notification_type: (type.notification_type as any) || 'default',
+			target_users: type.target_users || null,
+			message_template: type.message_template || '',
+			priority: type.priority || 0,
+			variable_schema: type.variable_schema || null,
+			show_in_feed:
+				(type as any).show_in_feed !== undefined
+					? (type as any).show_in_feed
+					: true,
+			show_popup:
+				(type as any).show_popup !== undefined
+					? (type as any).show_popup
+					: false,
+			tagIds: type.tags?.map(tag => tag.id) || [],
+		})
+		setShowForm(true)
+	}
+
+	const handleDuplicate = (type: Notification) => {
+		setEditingType(null) // Not editing, creating a new one
+		setFormData({
+			name: `${type.name} (Copy)`,
 			description: type.description || '',
 			enabled: type.enabled,
 			notification_type: (type.notification_type as any) || 'default',
@@ -352,7 +386,7 @@ export default function NotificationTypeManager() {
 						setShowForm(true)
 					}}
 					className={styles.addButton}>
-					+ Add New Type
+					+ Add Notification
 				</button>
 			</div>
 
@@ -725,12 +759,18 @@ export default function NotificationTypeManager() {
 												Edit
 											</button>
 											<button
+												onClick={() =>
+													handleDuplicate(type)
+												}
+												className={styles.duplicateButton}>
+												Duplicate
+											</button>
+											<button
 												onClick={e =>
 													handleTest(type.id, e)
 												}
 												className={styles.testButton}
-												type='button'
-												style={{ minWidth: '80px' }}>
+												type='button'>
 												Test
 											</button>
 											<button

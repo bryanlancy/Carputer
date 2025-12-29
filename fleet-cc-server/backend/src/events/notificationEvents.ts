@@ -95,7 +95,7 @@ export async function handleDeviceOnlineEvent(
         const triggerData = {
           device: {
             id: device.id,
-            device_id: device.device_id,
+            mac_address: device.mac_address,
             hostname: device.hostname,
             vin: device.vin,
             hardware_rev: device.hardware_rev,
@@ -108,6 +108,8 @@ export async function handleDeviceOnlineEvent(
             authorized: device.authorized,
             registration_method: device.registration_method,
             ...deviceData,
+            // Ensure device_id is always set correctly (after spread to prevent overwrite)
+            device_id: device.device_id,
           },
           timestamp: new Date().toISOString(), // ISO 8601 format as required by schema
         };
@@ -172,7 +174,7 @@ export async function handleDeviceOfflineEvent(
         const triggerData = {
           device: {
             id: device.id,
-            device_id: device.device_id,
+            mac_address: device.mac_address,
             hostname: device.hostname,
             vin: device.vin,
             hardware_rev: device.hardware_rev,
@@ -185,6 +187,8 @@ export async function handleDeviceOfflineEvent(
             authorized: device.authorized,
             registration_method: device.registration_method,
             ...deviceData,
+            // Ensure device_id is always set correctly (after spread to prevent overwrite)
+            device_id: device.device_id,
           },
           timestamp: new Date().toISOString(), // ISO 8601 format as required by schema
         };

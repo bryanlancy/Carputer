@@ -30,8 +30,19 @@ export class WiringExecutorService {
 	 * @returns true if condition passes, false otherwise
 	 */
 	private evaluateBranchCondition(branchNodeConfig: any, data: any): boolean {
-		if (!branchNodeConfig.fieldPath || !branchNodeConfig.operator || branchNodeConfig.comparisonValue === undefined) {
-			console.warn('[WiringExecutor] Branch node missing required configuration')
+		console.log('[BranchCondition] Evaluating branch condition:', {
+			config: branchNodeConfig,
+			dataKeys: data ? Object.keys(data) : 'null',
+			dataSample: data ? JSON.stringify(data).substring(0, 500) : 'null'
+		})
+
+		if (!branchNodeConfig || !branchNodeConfig.fieldPath || !branchNodeConfig.operator || branchNodeConfig.comparisonValue === undefined) {
+			console.warn('[BranchCondition] Missing required configuration:', {
+				hasConfig: !!branchNodeConfig,
+				fieldPath: branchNodeConfig?.fieldPath,
+				operator: branchNodeConfig?.operator,
+				comparisonValue: branchNodeConfig?.comparisonValue
+			})
 			return false
 		}
 
@@ -107,28 +118,57 @@ export class WiringExecutorService {
 
 			// Regular field navigation
 			let current = obj
+			console.log('[BranchCondition] Navigating field path:', { path, parts })
 			for (const key of parts) {
 				if (current && typeof current === 'object') {
+					console.log(`[BranchCondition] Accessing key "${key}" from:`, {
+						currentType: typeof current,
+						currentKeys: typeof current === 'object' && current !== null ? Object.keys(current) : 'N/A',
+						hasKey: key in current
+					})
 					current = current[key]
 				} else {
+					console.log(`[BranchCondition] Cannot navigate - current is not an object:`, {
+						key,
+						currentType: typeof current,
+						currentValue: current
+					})
 					return undefined
 				}
 			}
 
+			console.log(`[BranchCondition] Extracted field value:`, {
+				value: current,
+				valueType: typeof current
+			})
 			return current
 		}
 
 		const fieldPath = branchNodeConfig.fieldPath
+		console.log('[BranchCondition] Extracting field value:', { fieldPath, dataStructure: JSON.stringify(data).substring(0, 1000) })
 		const fieldValue = getNestedValue(data, fieldPath)
 		const operator = branchNodeConfig.operator
 		const comparisonValue = branchNodeConfig.comparisonValue
+
+		console.log('[BranchCondition] Comparison values:', {
+			fieldPath,
+			fieldValue,
+			fieldValueType: typeof fieldValue,
+			operator,
+			comparisonValue,
+			comparisonValueType: typeof comparisonValue
+		})
 
 		// Convert comparison value to appropriate type
 		let typedComparisonValue: any = comparisonValue
 		if (typeof fieldValue === 'number') {
 			typedComparisonValue = parseFloat(comparisonValue)
 			if (isNaN(typedComparisonValue)) {
-				console.warn(`[WiringExecutor] Cannot compare number field with non-numeric value: ${comparisonValue}`)
+				console.warn(`[BranchCondition] Cannot compare number field with non-numeric value:`, {
+					fieldValue,
+					comparisonValue,
+					typedComparisonValue
+				})
 				return false
 			}
 		} else if (typeof fieldValue === 'boolean') {
@@ -137,54 +177,91 @@ export class WiringExecutorService {
 			typedComparisonValue = new Date(comparisonValue)
 		}
 
+		console.log('[BranchCondition] Typed comparison:', {
+			fieldValue,
+			fieldValueType: typeof fieldValue,
+			typedComparisonValue,
+			typedComparisonValueType: typeof typedComparisonValue
+		})
+
 		// Evaluate condition based on operator
+		let result: boolean
 		switch (operator) {
 			case 'equals':
-				return fieldValue == typedComparisonValue
+				result = fieldValue == typedComparisonValue
+				break
 			case 'not_equals':
-				return fieldValue != typedComparisonValue
+				result = fieldValue != typedComparisonValue
+				break
 			case 'greater_than':
-				return fieldValue > typedComparisonValue
+				result = fieldValue > typedComparisonValue
+				break
 			case 'less_than':
-				return fieldValue < typedComparisonValue
+				result = fieldValue < typedComparisonValue
+				break
 			case 'greater_than_or_equal':
-				return fieldValue >= typedComparisonValue
+				result = fieldValue >= typedComparisonValue
+				break
 			case 'less_than_or_equal':
-				return fieldValue <= typedComparisonValue
+				result = fieldValue <= typedComparisonValue
+				break
 			case 'contains':
 				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
-					return fieldValue.includes(typedComparisonValue)
+					result = fieldValue.includes(typedComparisonValue)
+				} else {
+					result = false
 				}
-				return false
+				break
 			case 'not_contains':
 				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
-					return !fieldValue.includes(typedComparisonValue)
+					result = !fieldValue.includes(typedComparisonValue)
+				} else {
+					result = false
 				}
-				return false
+				break
 			case 'starts_with':
 				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
-					return fieldValue.startsWith(typedComparisonValue)
+					result = fieldValue.startsWith(typedComparisonValue)
+				} else {
+					result = false
 				}
-				return false
+				break
 			case 'ends_with':
 				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
-					return fieldValue.endsWith(typedComparisonValue)
+					result = fieldValue.endsWith(typedComparisonValue)
+				} else {
+					result = false
 				}
-				return false
+				break
 			case 'before':
 				if (fieldValue instanceof Date && typedComparisonValue instanceof Date) {
-					return fieldValue < typedComparisonValue
+					result = fieldValue < typedComparisonValue
+				} else {
+					result = false
 				}
-				return false
+				break
 			case 'after':
 				if (fieldValue instanceof Date && typedComparisonValue instanceof Date) {
-					return fieldValue > typedComparisonValue
+					result = fieldValue > typedComparisonValue
+				} else {
+					result = false
 				}
-				return false
+				break
 			default:
-				console.warn(`[WiringExecutor] Unknown branch operator: ${operator}`)
-				return false
+				console.warn(`[BranchCondition] Unknown branch operator: ${operator}`)
+				result = false
 		}
+
+		console.log('[BranchCondition] Evaluation result:', {
+			fieldPath,
+			fieldValue: String(fieldValue),
+			operator,
+			comparisonValue: String(comparisonValue),
+			result,
+			comparison: `${String(fieldValue)} ${operator} ${String(typedComparisonValue)} = ${result}`
+		})
+
+		return result
 	}
 
 	/**
@@ -365,22 +442,66 @@ export class WiringExecutorService {
 
 		// If it's a branch node, evaluate condition and follow appropriate output
 		if (startNode.type === 'branch') {
+			console.log('[BranchTraversal] Processing branch node:', {
+				nodeId: startNodeId,
+				hasBranchConfig: !!nodeConfigs[startNodeId],
+				branchConfig: nodeConfigs[startNodeId]
+			})
+
 			const branchConfig = nodeConfigs[startNodeId]
+			if (!branchConfig) {
+				console.warn('[BranchTraversal] Branch node has no configuration:', {
+					nodeId: startNodeId,
+					availableNodeConfigs: Object.keys(nodeConfigs)
+				})
+				return results
+			}
+
 			const conditionResult = this.evaluateBranchCondition(branchConfig, data)
+			console.log('[BranchTraversal] Branch condition result:', {
+				nodeId: startNodeId,
+				conditionResult,
+				willFollowPath: conditionResult ? 'output-true' : 'output-false'
+			})
 
 			// Find edges from this branch node
 			const branchEdges = (wiring.edges as any[]).filter(
 				(e: any) => e.source === startNodeId
 			)
 
+			console.log('[BranchTraversal] Found branch edges:', {
+				nodeId: startNodeId,
+				edgeCount: branchEdges.length,
+				edges: branchEdges.map(e => ({
+					id: e.id,
+					source: e.source,
+					target: e.target,
+					sourceHandle: e.sourceHandle
+				}))
+			})
+
 			// Follow edges based on condition result
-			// Branch nodes have two outputs: 'true' (sourceHandle='true') and 'false' (sourceHandle='false')
+			// Branch nodes have two outputs: 'output-true' and 'output-false'
 			for (const edge of branchEdges) {
 				const shouldFollow = conditionResult
-					? edge.sourceHandle === 'true'
-					: edge.sourceHandle === 'false'
+					? edge.sourceHandle === 'output-true'
+					: edge.sourceHandle === 'output-false'
+
+				console.log('[BranchTraversal] Checking edge:', {
+					edgeId: edge.id,
+					sourceHandle: edge.sourceHandle,
+					expectedHandle: conditionResult ? 'output-true' : 'output-false',
+					shouldFollow,
+					conditionResult
+				})
 
 				if (shouldFollow) {
+					console.log('[BranchTraversal] Following edge:', {
+						edgeId: edge.id,
+						from: edge.source,
+						to: edge.target,
+						path: conditionResult ? 'TRUE' : 'FALSE'
+					})
 					// Continue traversal with the same data (branch nodes pass data through)
 					const subResults = await this.traverseAndExecute(
 						wiring,
@@ -394,6 +515,12 @@ export class WiringExecutorService {
 						tagService
 					)
 					results.push(...subResults)
+				} else {
+					console.log('[BranchTraversal] Skipping edge (wrong path):', {
+						edgeId: edge.id,
+						sourceHandle: edge.sourceHandle,
+						expectedHandle: conditionResult ? 'output-true' : 'output-false'
+					})
 				}
 			}
 			return results
@@ -542,21 +669,66 @@ export class WiringExecutorService {
 
 		// If it's a branch node, evaluate condition and follow appropriate output
 		if (startNode.type === 'branch') {
+			console.log('[BranchTraversal] Processing branch node (all workspaces):', {
+				nodeId: startNodeId,
+				hasBranchConfig: !!nodeConfigs[startNodeId],
+				branchConfig: nodeConfigs[startNodeId]
+			})
+
 			const branchConfig = nodeConfigs[startNodeId]
+			if (!branchConfig) {
+				console.warn('[BranchTraversal] Branch node has no configuration (all workspaces):', {
+					nodeId: startNodeId,
+					availableNodeConfigs: Object.keys(nodeConfigs)
+				})
+				return result
+			}
+
 			const conditionResult = this.evaluateBranchCondition(branchConfig, data)
+			console.log('[BranchTraversal] Branch condition result (all workspaces):', {
+				nodeId: startNodeId,
+				conditionResult,
+				willFollowPath: conditionResult ? 'output-true' : 'output-false'
+			})
 
 			// Find edges from this branch node
 			const branchEdges = (wiring.edges as any[]).filter(
 				(e: any) => e.source === startNodeId
 			)
 
+			console.log('[BranchTraversal] Found branch edges (all workspaces):', {
+				nodeId: startNodeId,
+				edgeCount: branchEdges.length,
+				edges: branchEdges.map(e => ({
+					id: e.id,
+					source: e.source,
+					target: e.target,
+					sourceHandle: e.sourceHandle
+				}))
+			})
+
 			// Follow edges based on condition result
+			// Branch nodes have two outputs: 'output-true' and 'output-false'
 			for (const edge of branchEdges) {
 				const shouldFollow = conditionResult
-					? edge.sourceHandle === 'true'
-					: edge.sourceHandle === 'false'
+					? edge.sourceHandle === 'output-true'
+					: edge.sourceHandle === 'output-false'
+
+				console.log('[BranchTraversal] Checking edge (all workspaces):', {
+					edgeId: edge.id,
+					sourceHandle: edge.sourceHandle,
+					expectedHandle: conditionResult ? 'output-true' : 'output-false',
+					shouldFollow,
+					conditionResult
+				})
 
 				if (shouldFollow) {
+					console.log('[BranchTraversal] Following edge (all workspaces):', {
+						edgeId: edge.id,
+						from: edge.source,
+						to: edge.target,
+						path: conditionResult ? 'TRUE' : 'FALSE'
+					})
 					// Continue traversal with the same data (branch nodes pass data through)
 					const subResult = await this.traverseAndExecuteForAllWorkspaces(
 						wiring,
@@ -568,6 +740,12 @@ export class WiringExecutorService {
 					)
 					result.executedCount += subResult.executedCount
 					result.errors.push(...subResult.errors)
+				} else {
+					console.log('[BranchTraversal] Skipping edge (wrong path, all workspaces):', {
+						edgeId: edge.id,
+						sourceHandle: edge.sourceHandle,
+						expectedHandle: conditionResult ? 'output-true' : 'output-false'
+					})
 				}
 			}
 			return result

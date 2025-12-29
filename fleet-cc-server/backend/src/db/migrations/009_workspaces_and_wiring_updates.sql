@@ -82,6 +82,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_update_workspaces_updated_at ON workspaces;
 CREATE TRIGGER trigger_update_workspaces_updated_at
   BEFORE UPDATE ON workspaces
   FOR EACH ROW

@@ -179,6 +179,7 @@ model User {
   user_roles          UserRole[]
   user_notifications  UserNotification[]
   notification_preferences UserNotificationPreferences?
+  api_keys            ApiKey[]
 
   @@index([supabase_user_id])
   @@index([email])
@@ -392,5 +393,42 @@ model TagAssociation {
   @@index([tag_id])
   @@index([inherited])
   @@map("tag_associations")
+}
+
+model ApiKey {
+  id                  Int             @id @default(autoincrement())
+  key_hash            String          @unique @db.VarChar(255)
+  key_prefix          String          @db.VarChar(8)
+  user_id             String          @db.Uuid
+  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  description         String?         @db.Text
+  revoked_at          DateTime?
+  last_used_at        DateTime?
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  // Relations
+  permissions         ApiKeyPermission[]
+
+  @@index([user_id])
+  @@index([key_hash])
+  @@index([revoked_at])
+  @@index([last_used_at])
+  @@map("api_keys")
+}
+
+model ApiKeyPermission {
+  id                  Int             @id @default(autoincrement())
+  api_key_id          Int
+  api_key             ApiKey          @relation(fields: [api_key_id], references: [id], onDelete: Cascade)
+  resource_type       String          @db.VarChar(50)
+  allowed_endpoints   Json?           // Array of endpoint patterns
+  allowed_fields      Json?           // Object mapping resource types to field arrays
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @default(now()) @updatedAt
+
+  @@index([api_key_id])
+  @@index([resource_type])
+  @@map("api_key_permissions")
 }
 

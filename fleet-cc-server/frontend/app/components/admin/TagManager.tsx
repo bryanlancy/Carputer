@@ -17,7 +17,13 @@ interface Tag {
 	}
 }
 
-export default function TagManager() {
+interface TagManagerProps {
+	onUnauthorized?: () => void
+}
+
+export default function TagManager({
+	onUnauthorized,
+}: TagManagerProps = {}) {
 	const { session } = useAuth()
 	const [tags, setTags] = useState<Tag[]>([])
 	const [loading, setLoading] = useState(true)
@@ -65,8 +71,12 @@ export default function TagManager() {
 			if (response.ok) {
 				const data = await response.json()
 				setTags(data)
-			} else if (response.status === 401 || response.status === 403) {
-				setError('Unauthorized. Please check your permissions.')
+			} else if (response.status === 403) {
+				setError('You do not have permission to access tags')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
 				setError(`Failed to load tags: ${response.statusText}`)
 			}
@@ -126,6 +136,14 @@ export default function TagManager() {
 					color: '#3b82f6',
 					category: '',
 				})
+			} else if (response.status === 403) {
+				setError(
+					`You do not have permission to ${editingTag ? 'update' : 'create'} tags`
+				)
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
 				const errorData = await response.json().catch(() => ({
 					error: 'Unknown error',
@@ -182,6 +200,12 @@ export default function TagManager() {
 
 			if (response.ok) {
 				await loadTags()
+			} else if (response.status === 403) {
+				setError('You do not have permission to delete tags')
+				onUnauthorized?.()
+			} else if (response.status === 401) {
+				setError('Authentication required')
+				onUnauthorized?.()
 			} else {
 				const errorData = await response.json().catch(() => ({
 					error: 'Unknown error',

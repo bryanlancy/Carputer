@@ -14,6 +14,21 @@ CREATE TABLE IF NOT EXISTS notification_types (
 );
 
 -- Notifications table
+-- Handle case where table might exist from partial migration
+DO $$
+BEGIN
+  -- Drop table if it exists without proper structure
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_name = 'notifications'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notifications' AND column_name = 'device_id'
+  ) THEN
+    DROP TABLE notifications CASCADE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -27,19 +42,45 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Insert default notification types
-INSERT INTO notification_types (type_code, type_name, description, severity, enabled) VALUES
-  ('device.online', 'Device Online', 'Device has come online and established connection', 'info', true),
-  ('device.offline', 'Device Offline', 'Device has gone offline or lost connection', 'warning', true)
-ON CONFLICT (type_code) DO NOTHING;
+-- Insert default notification types (only if type_code column exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notification_types' AND column_name = 'type_code'
+  ) THEN
+    INSERT INTO notification_types (type_code, type_name, description, severity, enabled) VALUES
+      ('device.online', 'Device Online', 'Device has come online and established connection', 'info', true),
+      ('device.offline', 'Device Offline', 'Device has gone offline or lost connection', 'warning', true)
+    ON CONFLICT (type_code) DO NOTHING;
+  END IF;
+END $$;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_notifications_device_id ON notifications(device_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_notification_type_id ON notifications(notification_type_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_device_log_id ON notifications(device_log_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+-- Only create read index if the column exists (it may be dropped by later migrations)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notifications' AND column_name = 'read'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
-CREATE INDEX IF NOT EXISTS idx_notification_types_type_code ON notification_types(type_code);
+-- Only create type_code index if the column exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'notification_types' AND column_name = 'type_code'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_notification_types_type_code ON notification_types(type_code);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_notification_types_enabled ON notification_types(enabled);
 
 -- Trigger to update updated_at timestamp for notification_types

@@ -1,4 +1,8 @@
+@use './_mixins' as *;
+
 .container {
+	padding: 0;
+
 	.error {
 		background: rgba(239, 68, 68, 0.1);
 		border: 1px solid var(--error-color);
@@ -30,6 +34,10 @@
 	}
 }
 
+.header {
+	@include management-header;
+}
+
 .actions {
 	margin-bottom: 1.5rem;
 }
@@ -50,6 +58,88 @@
 	}
 }
 
+.newKeyAlert {
+	background: rgba(34, 197, 94, 0.1);
+	border: 2px solid var(--success-color);
+	border-radius: 8px;
+	padding: 1.5rem;
+	margin-bottom: 1.5rem;
+	position: relative;
+
+	.newKeyContent {
+		h3 {
+			margin: 0 0 0.5rem 0;
+			color: var(--success-color);
+		}
+
+		p {
+			margin: 0 0 1rem 0;
+			color: var(--text-secondary);
+		}
+
+		.keyWarning {
+			margin: 0 0 1rem 0;
+			color: var(--text-secondary);
+		}
+
+		.keyDisplay {
+			display: flex;
+			align-items: center;
+			gap: 1rem;
+			background: var(--bg-tertiary);
+			padding: 1rem;
+			border-radius: 4px;
+			border: 1px solid var(--border-color);
+			margin-bottom: 1.5rem;
+
+			code {
+				flex: 1;
+				font-family: 'Courier New', monospace;
+				font-size: 0.875rem;
+				color: var(--text-primary);
+				word-break: break-all;
+			}
+
+			.copyButton {
+				padding: 0.5rem 1rem;
+				background: var(--primary-color);
+				color: white;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 0.875rem;
+				font-weight: 600;
+				transition: opacity 0.2s;
+
+				&:hover {
+					opacity: 0.9;
+				}
+			}
+		}
+	}
+
+	.closeButton {
+		position: absolute;
+		top: 1rem;
+		right: 1rem;
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		font-size: 1.5rem;
+		cursor: pointer;
+		padding: 0;
+		width: 24px;
+		height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		&:hover {
+			opacity: 0.7;
+		}
+	}
+}
+
 .formOverlay {
 	position: fixed;
 	top: 0;
@@ -63,7 +153,6 @@
 	z-index: 1000;
 	padding: 2rem;
 
-	// Mobile and tablet: full screen
 	@media (max-width: 768px) {
 		padding: 0;
 		align-items: stretch;
@@ -80,7 +169,6 @@
 	max-height: 90vh;
 	overflow-y: auto;
 
-	// Custom scrollbar styling
 	&::-webkit-scrollbar {
 		width: 8px;
 	}
@@ -100,11 +188,9 @@
 		}
 	}
 
-	// Firefox scrollbar
 	scrollbar-width: thin;
 	scrollbar-color: var(--border-color) var(--bg-tertiary);
 
-	// Tablet: full screen
 	@media (max-width: 1024px) {
 		width: 100%;
 		max-width: 100%;
@@ -114,7 +200,6 @@
 		border-radius: 0;
 	}
 
-	// Mobile: full screen
 	@media (max-width: 768px) {
 		width: 100%;
 		max-width: 100%;
@@ -171,10 +256,6 @@
 			font-weight: 500;
 			margin-bottom: 0.5rem;
 
-			.required {
-				color: var(--error-color);
-			}
-
 			input,
 			textarea,
 			select {
@@ -198,24 +279,6 @@
 				}
 			}
 
-			textarea {
-				resize: vertical;
-				min-height: 80px;
-			}
-
-			.jsonInput {
-				font-family: 'Courier New', monospace;
-				font-size: 0.875rem;
-			}
-
-			.readOnly {
-				cursor: default; /* Change cursor to default instead of text cursor */
-
-				&:hover {
-					cursor: default; /* Ensure cursor stays default on hover */
-				}
-			}
-
 			small {
 				display: block;
 				margin-top: 0.25rem;
@@ -223,51 +286,128 @@
 				font-size: 0.875rem;
 			}
 		}
+	}
 
-		.radioGroup {
+	.permissionCard {
+		background: var(--bg-tertiary);
+		border: 1px solid var(--border-color);
+		border-radius: 8px;
+		padding: 1.5rem;
+		margin-bottom: 1rem;
+
+		.permissionHeader {
 			display: flex;
-			flex-direction: row;
-			gap: 1rem;
-			margin-top: 0.5rem;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 1rem;
+
+			.resourceSelect {
+				flex: 1;
+				margin-right: 1rem;
+			}
+
+			.removeButton {
+				padding: 0.5rem 1rem;
+				background: var(--error-color);
+				color: white;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 0.875rem;
+				font-weight: 500;
+				transition: opacity 0.2s;
+
+				&:hover {
+					opacity: 0.9;
+				}
+			}
 		}
 
-		.radioLabel {
-			display: flex;
-			align-items: center;
-			gap: 0.375rem;
-			cursor: pointer;
-			padding: 0.375rem 0.75rem;
-			border-radius: 6px;
-			transition: background-color 0.2s;
-			font-size: 0.875rem;
+		.permissionSection {
+			margin-bottom: 1.5rem;
 
-			&:hover {
-				background: var(--bg-tertiary);
+			&:last-child {
+				margin-bottom: 0;
 			}
 
-			input[type='radio'] {
-				margin: 0;
-				cursor: pointer;
-				width: 16px;
-				height: 16px;
+			label {
+				display: block;
+				margin-bottom: 0.75rem;
+
+				small {
+					display: block;
+					margin-top: 0.25rem;
+					color: var(--text-secondary);
+					font-size: 0.875rem;
+				}
 			}
 
-			span {
-				color: var(--text-primary);
-				font-size: 0.9375rem;
+			.fieldActions {
+				display: flex;
+				gap: 0.5rem;
+				margin-bottom: 0.5rem;
+
+				.selectAllButton,
+				.deselectAllButton {
+					padding: 0.5rem 1rem;
+					background: var(--bg-secondary);
+					color: var(--text-primary);
+					border: 1px solid var(--border-color);
+					border-radius: 4px;
+					cursor: pointer;
+					font-size: 0.875rem;
+					font-weight: 500;
+					transition: background 0.2s;
+
+					&:hover {
+						background: var(--border-color);
+					}
+				}
+			}
+
+			.endpointList,
+			.fieldList {
+				display: grid;
+				grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+				gap: 0.5rem;
+				margin-top: 0.5rem;
+				padding: 1rem;
+				background: var(--bg-secondary);
+				border-radius: 4px;
+				border: 1px solid var(--border-color);
+				max-height: 200px;
+				overflow-y: auto;
+
+				.checkboxLabel {
+					display: flex;
+					align-items: center;
+					gap: 0.5rem;
+					cursor: pointer;
+					font-size: 0.875rem;
+
+					input[type='checkbox'] {
+						width: auto;
+						cursor: pointer;
+					}
+				}
 			}
 		}
+	}
 
-		.checkboxLabel {
-			display: flex;
-			align-items: center;
-			gap: 0.5rem;
-			cursor: pointer;
+	.addPermissionButton {
+		padding: 0.75rem 1.5rem;
+		background: var(--bg-tertiary);
+		color: var(--text-primary);
+		border: 1px solid var(--border-color);
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.875rem;
+		font-weight: 500;
+		transition: background 0.2s;
+		width: 100%;
 
-			input[type='checkbox'] {
-				width: auto;
-				cursor: pointer;
-			}
+		&:hover {
+			background: var(--border-color);
 		}
 	}
 
@@ -289,13 +429,18 @@
 		font-size: 1rem;
 		font-weight: 600;
 		transition: opacity 0.2s;
+
+		&:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
 	}
 
 	.saveButton {
 		background: var(--primary-color);
 		color: white;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			opacity: 0.9;
 		}
 	}
@@ -347,53 +492,22 @@
 				padding: 1rem;
 				color: var(--text-secondary);
 
-				.codeCell {
+				.keyPrefix {
 					font-family: 'Courier New', monospace;
 					color: var(--primary-color);
+					background: var(--bg-secondary);
+					padding: 0.25rem 0.5rem;
+					border-radius: 4px;
 				}
 
-				.severity {
-					display: inline-block;
-					padding: 0.25rem 0.75rem;
-					border-radius: 12px;
-					font-size: 0.875rem;
-					font-weight: 600;
-					text-transform: capitalize;
-
-					&.info {
-						background: rgba(59, 130, 246, 0.2);
-						color: #60a5fa;
-					}
-
-					&.warning {
-						background: rgba(245, 158, 11, 0.2);
-						color: #fbbf24;
-					}
-
-					&.error {
-						background: rgba(239, 68, 68, 0.2);
-						color: #f87171;
-					}
-
-					&.critical {
-						background: rgba(220, 38, 38, 0.3);
-						color: #ef4444;
-					}
-				}
-
-				.enabled {
+				.active {
 					color: var(--success-color);
 					font-weight: 600;
 				}
 
-				.disabled {
-					color: var(--text-secondary);
-				}
-
-				.noDataTypes {
-					color: var(--text-secondary);
-					font-style: italic;
-					font-size: 0.875rem;
+				.revoked {
+					color: var(--error-color);
+					font-weight: 600;
 				}
 
 				button {
@@ -405,10 +519,14 @@
 					font-size: 0.875rem;
 					font-weight: 500;
 					transition: opacity 0.2s;
-					min-width: 90px;
 
-					&:hover {
+					&:hover:not(:disabled) {
 						opacity: 0.9;
+					}
+
+					&:disabled {
+						opacity: 0.5;
+						cursor: not-allowed;
 					}
 				}
 
@@ -417,25 +535,23 @@
 					color: white;
 				}
 
-				.duplicateButton {
-					background: var(--bg-secondary);
-					color: var(--text-primary);
-					border: 1px solid var(--border-color);
-				}
-
-				.testButton {
-					background: var(--success-color);
+				.revokeButton {
+					background: var(--error-color);
 					color: white;
-
-					&:disabled {
-						opacity: 0.6;
-						cursor: not-allowed;
-					}
 				}
 
 				.deleteButton {
-					background: var(--error-color);
-					color: white;
+					background: transparent;
+					color: var(--error-color);
+					border: 1px solid var(--error-color);
+					font-size: 1rem;
+					padding: 0.5rem;
+					min-width: 36px;
+
+					&:hover {
+						background: var(--error-color);
+						color: white;
+					}
 				}
 			}
 		}
@@ -455,3 +571,4 @@
 	text-align: center;
 	color: var(--text-secondary);
 }
+
