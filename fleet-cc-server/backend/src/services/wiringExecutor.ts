@@ -24,6 +24,170 @@ export class WiringExecutorService {
 	) {}
 
 	/**
+	 * Evaluate a branch node condition
+	 * @param branchNodeConfig - The branch node's configuration
+	 * @param data - The input data to evaluate against
+	 * @returns true if condition passes, false otherwise
+	 */
+	private evaluateBranchCondition(branchNodeConfig: any, data: any): boolean {
+		if (!branchNodeConfig.fieldPath || !branchNodeConfig.operator || branchNodeConfig.comparisonValue === undefined) {
+			console.warn('[WiringExecutor] Branch node missing required configuration')
+			return false
+		}
+
+		// Get the field value from data using dot notation path
+		const getNestedValue = (obj: any, path: string): any => {
+			const parts = path.split('.')
+			const timestampSubfieldKeys = ['year', 'month', 'day', 'hour', 'minute', 'second', 'dayOfWeek', 'dayOfYear', 'week', 'quarter']
+
+			// Check if the last part is a timestamp subfield
+			const lastPart = parts[parts.length - 1]
+			const isTimestampSubfield = timestampSubfieldKeys.includes(lastPart)
+
+			if (isTimestampSubfield && parts.length > 1) {
+				// Get the parent timestamp value (everything except the last part)
+				let parentValue = obj
+				for (let i = 0; i < parts.length - 1; i++) {
+					if (parentValue && typeof parentValue === 'object') {
+						parentValue = parentValue[parts[i]]
+					} else {
+						return undefined
+					}
+				}
+
+				// Extract the timestamp component from the parent value
+				if (parentValue instanceof Date) {
+					const date = parentValue
+					switch (lastPart) {
+						case 'year': return date.getFullYear()
+						case 'month': return date.getMonth() + 1
+						case 'day': return date.getDate()
+						case 'hour': return date.getHours()
+						case 'minute': return date.getMinutes()
+						case 'second': return date.getSeconds()
+						case 'dayOfWeek': return date.getDay()
+						case 'dayOfYear': return Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86400000)
+						case 'week': {
+							const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+							const dayNum = d.getUTCDay() || 7
+							d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+							const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+							return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+						}
+						case 'quarter': return Math.floor(date.getMonth() / 3) + 1
+						default: return undefined
+					}
+				} else if (typeof parentValue === 'string') {
+					// Try to parse as ISO date string
+					const date = new Date(parentValue)
+					if (!isNaN(date.getTime())) {
+						switch (lastPart) {
+							case 'year': return date.getFullYear()
+							case 'month': return date.getMonth() + 1
+							case 'day': return date.getDate()
+							case 'hour': return date.getHours()
+							case 'minute': return date.getMinutes()
+							case 'second': return date.getSeconds()
+							case 'dayOfWeek': return date.getDay()
+							case 'dayOfYear': return Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86400000)
+							case 'week': {
+								const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+								const dayNum = d.getUTCDay() || 7
+								d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+								const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+								return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+							}
+							case 'quarter': return Math.floor(date.getMonth() / 3) + 1
+							default: return undefined
+						}
+					}
+				}
+				return undefined
+			}
+
+			// Regular field navigation
+			let current = obj
+			for (const key of parts) {
+				if (current && typeof current === 'object') {
+					current = current[key]
+				} else {
+					return undefined
+				}
+			}
+
+			return current
+		}
+
+		const fieldPath = branchNodeConfig.fieldPath
+		const fieldValue = getNestedValue(data, fieldPath)
+		const operator = branchNodeConfig.operator
+		const comparisonValue = branchNodeConfig.comparisonValue
+
+		// Convert comparison value to appropriate type
+		let typedComparisonValue: any = comparisonValue
+		if (typeof fieldValue === 'number') {
+			typedComparisonValue = parseFloat(comparisonValue)
+			if (isNaN(typedComparisonValue)) {
+				console.warn(`[WiringExecutor] Cannot compare number field with non-numeric value: ${comparisonValue}`)
+				return false
+			}
+		} else if (typeof fieldValue === 'boolean') {
+			typedComparisonValue = comparisonValue === 'true' || comparisonValue === true
+		} else if (fieldValue instanceof Date || (typeof comparisonValue === 'string' && /^\d{4}-\d{2}-\d{2}/.test(comparisonValue))) {
+			typedComparisonValue = new Date(comparisonValue)
+		}
+
+		// Evaluate condition based on operator
+		switch (operator) {
+			case 'equals':
+				return fieldValue == typedComparisonValue
+			case 'not_equals':
+				return fieldValue != typedComparisonValue
+			case 'greater_than':
+				return fieldValue > typedComparisonValue
+			case 'less_than':
+				return fieldValue < typedComparisonValue
+			case 'greater_than_or_equal':
+				return fieldValue >= typedComparisonValue
+			case 'less_than_or_equal':
+				return fieldValue <= typedComparisonValue
+			case 'contains':
+				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
+					return fieldValue.includes(typedComparisonValue)
+				}
+				return false
+			case 'not_contains':
+				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
+					return !fieldValue.includes(typedComparisonValue)
+				}
+				return false
+			case 'starts_with':
+				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
+					return fieldValue.startsWith(typedComparisonValue)
+				}
+				return false
+			case 'ends_with':
+				if (typeof fieldValue === 'string' && typeof typedComparisonValue === 'string') {
+					return fieldValue.endsWith(typedComparisonValue)
+				}
+				return false
+			case 'before':
+				if (fieldValue instanceof Date && typedComparisonValue instanceof Date) {
+					return fieldValue < typedComparisonValue
+				}
+				return false
+			case 'after':
+				if (fieldValue instanceof Date && typedComparisonValue instanceof Date) {
+					return fieldValue > typedComparisonValue
+				}
+				return false
+			default:
+				console.warn(`[WiringExecutor] Unknown branch operator: ${operator}`)
+				return false
+		}
+	}
+
+	/**
 	 * Execute a trigger with test data and process all connected events
 	 * @param workspaceId - Workspace ID
 	 * @param triggerId - Trigger ID to execute
@@ -125,7 +289,7 @@ export class WiringExecutorService {
 		// Use provided node_config (current frontend selections) if available, otherwise use saved config
 		const nodeConfigs = nodeConfig || (wiring.node_config as any) || {}
 
-		// Execute each connected event
+		// Execute each connected event, traversing through branch nodes
 		const executedEvents: Array<{
 			event: any
 			success: boolean
@@ -133,6 +297,7 @@ export class WiringExecutorService {
 			error?: string
 		}> = []
 
+		// Traverse graph starting from trigger node
 		for (const edge of connectedEdges) {
 			// Skip invalid connections
 			if (edge.data?.validationError) {
@@ -144,49 +309,129 @@ export class WiringExecutorService {
 				continue
 			}
 
-			// Extract event ID from target node ID
-			const eventMatch = edge.target.match(/^event-(\d+)/)
-			if (!eventMatch) {
-				executedEvents.push({
-					event: { id: null, event_name: 'Unknown Event' },
-					success: false,
-					error: 'Invalid event node ID format',
-				})
-				continue
-			}
+			// Traverse from this edge, passing data through branch nodes
+			const results = await this.traverseAndExecute(
+				wiring,
+				nodeConfigs,
+				edge.target,
+				triggerData,
+				trigger,
+				userId,
+				isTest,
+				eventContext,
+				tagService
+			)
+			executedEvents.push(...results)
+		}
 
+		return {
+			trigger,
+			executedEvents,
+		}
+	}
+
+	/**
+	 * Traverse the wiring graph starting from a node, handling branch nodes and executing events
+	 * Branch nodes pass through their input data to their output connections
+	 */
+	private async traverseAndExecute(
+		wiring: any,
+		nodeConfigs: any,
+		startNodeId: string,
+		data: any,
+		trigger: any,
+		userId?: string,
+		isTest: boolean = true,
+		eventContext?: { tags: Set<number> },
+		tagService?: TagService
+	): Promise<Array<{
+		event: any
+		success: boolean
+		result?: any
+		error?: string
+	}>> {
+		const results: Array<{
+			event: any
+			success: boolean
+			result?: any
+			error?: string
+		}> = []
+
+		// Find the starting node
+		const startNode = (wiring.nodes as any[]).find((n: any) => n.id === startNodeId)
+		if (!startNode) {
+			return results
+		}
+
+		// If it's a branch node, evaluate condition and follow appropriate output
+		if (startNode.type === 'branch') {
+			const branchConfig = nodeConfigs[startNodeId]
+			const conditionResult = this.evaluateBranchCondition(branchConfig, data)
+
+			// Find edges from this branch node
+			const branchEdges = (wiring.edges as any[]).filter(
+				(e: any) => e.source === startNodeId
+			)
+
+			// Follow edges based on condition result
+			// Branch nodes have two outputs: 'true' (sourceHandle='true') and 'false' (sourceHandle='false')
+			for (const edge of branchEdges) {
+				const shouldFollow = conditionResult
+					? edge.sourceHandle === 'true'
+					: edge.sourceHandle === 'false'
+
+				if (shouldFollow) {
+					// Continue traversal with the same data (branch nodes pass data through)
+					const subResults = await this.traverseAndExecute(
+						wiring,
+						nodeConfigs,
+						edge.target,
+						data, // Pass data through
+						trigger,
+						userId,
+						isTest,
+						eventContext,
+						tagService
+					)
+					results.push(...subResults)
+				}
+			}
+			return results
+		}
+
+		// If it's an event node, execute it
+		const eventMatch = startNodeId.match(/^event-(\d+)/)
+		if (eventMatch) {
 			const eventId = parseInt(eventMatch[1])
 			const event = await this.eventService.getEventById(eventId)
 
 			if (!event) {
-				executedEvents.push({
+				results.push({
 					event: { id: eventId, event_name: 'Unknown' },
 					success: false,
 					error: `Event ${eventId} not found`,
 				})
-				continue
+				return results
 			}
 
 			if (!event.enabled) {
-				executedEvents.push({
+				results.push({
 					event,
 					success: false,
 					error: 'Event is disabled',
 				})
-				continue
+				return results
 			}
 
 			// Get effective event schema based on node configuration
 			let effectiveEvent = event
-			const eventNodeId = edge.target
-			const eventNodeConfig = nodeConfigs[eventNodeId]
+			const eventNodeConfig = nodeConfigs[startNodeId]
 
 			// For variable event types, check node configuration
 			if (
 				event.event_code === 'show_notification' &&
 				eventNodeConfig?.notification_id
 			) {
-				// Get notification's variable_schema
 				const notification = await this.prisma.notification.findUnique({
 					where: { id: parseInt(eventNodeConfig.notification_id) },
 				})
@@ -200,7 +445,6 @@ export class WiringExecutorService {
 				event.event_code === 'send_email' &&
 				eventNodeConfig?.message_code
 			) {
-				// Email events typically require device data
 				effectiveEvent = {
 					...event,
 					input_schema: {
@@ -215,7 +459,6 @@ export class WiringExecutorService {
 				event.event_code === 'execute_command' &&
 				eventNodeConfig?.command
 			) {
-				// Commands always require device
 				effectiveEvent = {
 					...event,
 					input_schema: {
@@ -228,43 +471,45 @@ export class WiringExecutorService {
 				}
 			}
 
-			// Validate connection
+			// Validate connection (use trigger schema for validation)
 			const validation = this.wiringService.validateConnection(
 				trigger,
 				effectiveEvent
 			)
 
 			if (!validation.valid) {
-				executedEvents.push({
+				results.push({
 					event,
 					success: false,
 					error: validation.error || 'Connection validation failed',
 				})
-				continue
+				return results
 			}
 
 			// Load event tags and merge into context
-			const eventTags = await tagService.getEntityTags('event', eventId)
-			const eventTagIds = eventTags.map(tag => tag.id)
-			eventTagIds.forEach(tagId => eventContext.tags.add(tagId))
+			if (tagService && eventContext) {
+				const eventTags = await tagService.getEntityTags('event', eventId)
+				const eventTagIds = eventTags.map(tag => tag.id)
+				eventTagIds.forEach(tagId => eventContext.tags.add(tagId))
+			}
 
 			// Execute event handler
 			try {
 				const result = await this.executeEvent(
 					event,
 					eventNodeConfig,
-					triggerData,
+					data, // Use the data passed through from trigger/branch
 					userId,
 					isTest,
 					eventContext
 				)
-				executedEvents.push({
+				results.push({
 					event,
 					success: true,
 					result,
 				})
 			} catch (error: any) {
-				executedEvents.push({
+				results.push({
 					event,
 					success: false,
 					error: error.message || 'Execution failed',
@@ -272,10 +517,169 @@ export class WiringExecutorService {
 			}
 		}
 
-		return {
-			trigger,
-			executedEvents,
+		return results
+	}
+
+	/**
+	 * Traverse and execute for real execution (not test mode)
+	 * Similar to traverseAndExecute but handles user-specific execution for notifications
+	 */
+	private async traverseAndExecuteForAllWorkspaces(
+		wiring: any,
+		nodeConfigs: any,
+		startNodeId: string,
+		data: any,
+		trigger: any,
+		workspaceId: number
+	): Promise<{ executedCount: number; errors: string[] }> {
+		const result = { executedCount: 0, errors: [] as string[] }
+
+		// Find the starting node
+		const startNode = (wiring.nodes as any[]).find((n: any) => n.id === startNodeId)
+		if (!startNode) {
+			return result
 		}
+
+		// If it's a branch node, evaluate condition and follow appropriate output
+		if (startNode.type === 'branch') {
+			const branchConfig = nodeConfigs[startNodeId]
+			const conditionResult = this.evaluateBranchCondition(branchConfig, data)
+
+			// Find edges from this branch node
+			const branchEdges = (wiring.edges as any[]).filter(
+				(e: any) => e.source === startNodeId
+			)
+
+			// Follow edges based on condition result
+			for (const edge of branchEdges) {
+				const shouldFollow = conditionResult
+					? edge.sourceHandle === 'true'
+					: edge.sourceHandle === 'false'
+
+				if (shouldFollow) {
+					// Continue traversal with the same data (branch nodes pass data through)
+					const subResult = await this.traverseAndExecuteForAllWorkspaces(
+						wiring,
+						nodeConfigs,
+						edge.target,
+						data, // Pass data through
+						trigger,
+						workspaceId
+					)
+					result.executedCount += subResult.executedCount
+					result.errors.push(...subResult.errors)
+				}
+			}
+			return result
+		}
+
+		// If it's an event node, execute it
+		const eventMatch = startNodeId.match(/^event-(\d+)/)
+		if (eventMatch) {
+			const eventId = parseInt(eventMatch[1])
+			const event = await this.eventService.getEventById(eventId)
+
+			if (!event || !event.enabled) {
+				return result // Event not found or disabled
+			}
+
+			// Get effective event schema based on node configuration
+			let effectiveEvent = event
+			const eventNodeConfig = nodeConfigs[startNodeId]
+
+			if (
+				event.event_code === 'show_notification' &&
+				eventNodeConfig?.notification_id
+			) {
+				const notification = await this.prisma.notification.findUnique({
+					where: { id: parseInt(eventNodeConfig.notification_id) },
+				})
+				if (notification?.variable_schema) {
+					effectiveEvent = {
+						...event,
+						input_schema: notification.variable_schema,
+					}
+				}
+			}
+
+			// Validate connection
+			const validation = this.wiringService.validateConnection(
+				trigger,
+				effectiveEvent
+			)
+
+			if (!validation.valid) {
+				result.errors.push(
+					`Validation failed for event ${eventId}: ${validation.error}`
+				)
+				return result
+			}
+
+			// Execute event handler (not in test mode - real execution)
+			try {
+				console.log(`[WiringExecutor] Workspace ${workspaceId}: Executing event ${eventId} (${event.event_code})`)
+
+				if (event.event_code === 'show_notification') {
+					try {
+						const users = await this.prisma.user.findMany({
+							select: { id: true },
+						})
+
+						console.log(`[WiringExecutor] Workspace ${workspaceId}: Found ${users.length} users for notifications`)
+
+						if (users.length === 0) {
+							console.warn(`[WiringExecutor] Workspace ${workspaceId}: No users found - skipping notification creation`)
+							result.errors.push('No users found for notification creation')
+							return result
+						}
+
+						let userSuccessCount = 0
+						for (const user of users) {
+							try {
+								await this.executeEvent(
+									event,
+									eventNodeConfig,
+									data, // Use the data passed through from trigger/branch
+									user.id,
+									false, // isTest = false for real execution
+									undefined
+								)
+								console.log(`[WiringExecutor] Workspace ${workspaceId}: Event ${eventId} executed for user ${user.id}`)
+								userSuccessCount++
+							} catch (userError: any) {
+								console.error(`[WiringExecutor] Workspace ${workspaceId}: Failed to execute event ${eventId} for user ${user.id}:`, userError)
+								result.errors.push(`Failed for user ${user.id}: ${userError.message}`)
+							}
+						}
+
+						if (userSuccessCount > 0) {
+							result.executedCount++
+							console.log(`[WiringExecutor] Workspace ${workspaceId}: Created notifications for ${userSuccessCount}/${users.length} users`)
+						}
+					} catch (userQueryError: any) {
+						console.error(`[WiringExecutor] Workspace ${workspaceId}: Failed to query users:`, userQueryError)
+						result.errors.push(`Failed to query users: ${userQueryError.message}`)
+					}
+				} else {
+					// For other event types, execute once
+					await this.executeEvent(
+						event,
+						eventNodeConfig,
+						data, // Use the data passed through from trigger/branch
+						undefined,
+						false, // isTest = false for real execution
+						undefined
+					)
+					console.log(`[WiringExecutor] Workspace ${workspaceId}: Event ${eventId} executed successfully`)
+					result.executedCount++
+				}
+			} catch (error: any) {
+				console.error(`[WiringExecutor] Workspace ${workspaceId}: Failed to execute event ${eventId}:`, error)
+				result.errors.push(`Failed to execute event ${eventId}: ${error.message}`)
+			}
+		}
+
+		return result
 	}
 
 	/**
@@ -611,6 +1015,7 @@ export class WiringExecutorService {
 				let executedCount = 0
 				const errors: string[] = []
 
+				// Traverse graph and execute events, handling branch nodes
 				for (const edge of connectedEdges) {
 					// Skip invalid connections
 					if (edge.data?.validationError) {
@@ -620,127 +1025,21 @@ export class WiringExecutorService {
 						continue
 					}
 
-					// Extract event ID from target node ID
-					const eventMatch = edge.target.match(/^event-(\d+)/)
-					if (!eventMatch) {
-						errors.push(`Invalid event node ID: ${edge.target}`)
-						continue
-					}
-
-					const eventId = parseInt(eventMatch[1])
-					const event = await this.eventService.getEventById(eventId)
-
-					if (!event || !event.enabled) {
-						continue // Event not found or disabled
-					}
-
-					// Get effective event schema based on node configuration
-					let effectiveEvent = event
-					const eventNodeId = edge.target
-					const eventNodeConfig = nodeConfigs[eventNodeId]
-
-					// For variable event types, check node configuration
-					if (
-						event.event_code === 'show_notification' &&
-						eventNodeConfig?.notification_id
-					) {
-						// Get notification's variable_schema
-						const notification = await this.prisma.notification.findUnique(
-							{
-								where: { id: parseInt(eventNodeConfig.notification_id) },
-							}
-						)
-						if (notification?.variable_schema) {
-							effectiveEvent = {
-								...event,
-								input_schema: notification.variable_schema,
-							}
-						}
-					}
-
-					// Validate connection
-					const validation = this.wiringService.validateConnection(
-						trigger,
-						effectiveEvent
-					)
-
-					if (!validation.valid) {
-						errors.push(
-							`Validation failed for event ${eventId}: ${validation.error}`
-						)
-						continue
-					}
-
-					// Execute event handler (not in test mode - real execution)
 					try {
-						console.log(`[WiringExecutor] Workspace ${workspace.id}: Executing event ${eventId} (${event.event_code})`)
-
-						// For real events, get all users and execute for each
-						// For show_notification events, we need to create notifications for all users
-						if (event.event_code === 'show_notification') {
-							try {
-								// Get all users from the User table (Prisma model)
-								const users = await this.prisma.user.findMany({
-									select: {
-										id: true,
-									},
-								})
-
-								console.log(`[WiringExecutor] Workspace ${workspace.id}: Found ${users.length} users for notifications`)
-
-								if (users.length === 0) {
-									console.warn(`[WiringExecutor] Workspace ${workspace.id}: No users found - skipping notification creation`)
-									errors.push('No users found for notification creation')
-									continue
-								}
-
-								// Execute for each user
-								let userSuccessCount = 0
-								for (const user of users) {
-									try {
-										const result = await this.executeEvent(
-											event,
-											eventNodeConfig,
-											triggerData,
-											user.id, // User ID for notification creation
-											false, // isTest = false for real execution
-											undefined // eventContext
-										)
-										console.log(`[WiringExecutor] Workspace ${workspace.id}: Event ${eventId} executed for user ${user.id}`)
-										userSuccessCount++
-									} catch (userError: any) {
-										console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to execute event ${eventId} for user ${user.id}:`, userError)
-										errors.push(`Failed for user ${user.id}: ${userError.message}`)
-										// Continue with other users even if one fails
-									}
-								}
-
-								if (userSuccessCount > 0) {
-									executedCount++
-									console.log(`[WiringExecutor] Workspace ${workspace.id}: Created notifications for ${userSuccessCount}/${users.length} users`)
-								}
-							} catch (userQueryError: any) {
-								console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to query users:`, userQueryError)
-								errors.push(`Failed to query users: ${userQueryError.message}`)
-							}
-						} else {
-							// For other event types, execute once (they don't need user context)
-							const result = await this.executeEvent(
-								event,
-								eventNodeConfig,
-								triggerData,
-								undefined, // No specific user
-								false, // isTest = false for real execution
-								undefined // eventContext
-							)
-							console.log(`[WiringExecutor] Workspace ${workspace.id}: Event ${eventId} executed successfully`, result)
-							executedCount++
-						}
-					} catch (error: any) {
-						console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to execute event ${eventId}:`, error)
-						errors.push(
-							`Failed to execute event ${eventId}: ${error.message}`
+						// Traverse from this edge, handling branch nodes
+						const results = await this.traverseAndExecuteForAllWorkspaces(
+							wiring,
+							nodeConfigs,
+							edge.target,
+							triggerData,
+							trigger,
+							workspace.id
 						)
+						executedCount += results.executedCount
+						errors.push(...results.errors)
+					} catch (error: any) {
+						console.error(`[WiringExecutor] Workspace ${workspace.id}: Failed to traverse from edge ${edge.id}:`, error)
+						errors.push(`Failed to traverse from edge ${edge.id}: ${error.message}`)
 					}
 				}
 
