@@ -206,18 +206,31 @@ export default function WiringCanvas({
 	// Track previous initialNodes to detect workspace changes
 	const prevInitialNodesRef = useRef<Node[]>([])
 
-	// Update nodes when initialNodes change (only when loading a different workspace)
+	// Update nodes when initialNodes change (when loading a different workspace or when config is merged)
 	useEffect(() => {
-		// Only update if initialNodes actually changed (different workspace loaded)
+		// Check if node IDs changed (different workspace) or if node data changed (config merged)
 		const prevIds = new Set(
 			prevInitialNodesRef.current.map(n => n.id).sort()
 		)
 		const currentIds = new Set(initialNodes.map(n => n.id).sort())
-		const hasChanged =
+		const idsChanged =
 			prevIds.size !== currentIds.size ||
 			Array.from(currentIds).some(id => !prevIds.has(id))
 
-		if (hasChanged) {
+		// Also check if any node data changed (e.g., config was merged)
+		let dataChanged = false
+		if (!idsChanged && prevInitialNodesRef.current.length === initialNodes.length) {
+			dataChanged = initialNodes.some((node, idx) => {
+				const prevNode = prevInitialNodesRef.current.find(n => n.id === node.id)
+				if (!prevNode) return true
+				// Check if config changed
+				const prevConfig = JSON.stringify(prevNode.data?.config || {})
+				const currentConfig = JSON.stringify(node.data?.config || {})
+				return prevConfig !== currentConfig
+			})
+		}
+
+		if (idsChanged || dataChanged) {
 			setNodes(initialNodes)
 			prevInitialNodesRef.current = initialNodes
 		}
@@ -313,6 +326,40 @@ export default function WiringCanvas({
 		}
 	}, [initialEdges, setEdges])
 
+	// Helper function to trace back through the graph to find the original trigger node
+	const findSourceTriggerNode = useCallback((nodeId: string, nodes: Node[], edges: Edge[]): Node | null => {
+		const visited = new Set<string>()
+
+		const traverse = (currentNodeId: string): Node | null => {
+			if (visited.has(currentNodeId)) {
+				return null // Cycle detected
+			}
+			visited.add(currentNodeId)
+
+			const currentNode = nodes.find(n => n.id === currentNodeId)
+			if (!currentNode) {
+				return null
+			}
+
+			// If this is a trigger node, we found it!
+			if (currentNode.type === 'trigger') {
+				return currentNode
+			}
+
+			// If this is a branch node, trace back through its input
+			if (currentNode.type === 'branch') {
+				const incomingEdge = edges.find(e => e.target === currentNodeId)
+				if (incomingEdge) {
+					return traverse(incomingEdge.source)
+				}
+			}
+
+			return null
+		}
+
+		return traverse(nodeId)
+	}, [])
+
 	// Validate all edges and mark invalid ones
 	const validateAllEdges = useCallback(() => {
 		setEdges(eds => {
@@ -370,11 +417,20 @@ export default function WiringCanvas({
 
 				// Skip validation for edges involving branch nodes - they're always valid
 				if (sourceNode.type === 'branch' || targetNode.type === 'branch') {
-					// Extract data types from source node if it's a trigger
+					// Extract data types from the original trigger node by tracing back through the graph
 					let dataTypes: string[] = []
+
+					// If source is a trigger, use it directly
 					if (sourceNode.type === 'trigger' && sourceNode.data?.output_schema) {
 						dataTypes = extractDataTypes(sourceNode.data.output_schema)
+					} else {
+						// Otherwise, trace back to find the original trigger
+						const triggerNode = findSourceTriggerNode(edge.source, internalNodesRef.current, eds)
+						if (triggerNode?.data?.output_schema) {
+							dataTypes = extractDataTypes(triggerNode.data.output_schema)
+						}
 					}
+
 					return {
 						...edge,
 						style: { stroke: '#22c55e' },
@@ -519,6 +575,16 @@ export default function WiringCanvas({
 		internalNodesRef.current = nodes
 		if (nodesRef) {
 			nodesRef.current = nodes
+			// Debug: Log branch node configs when nodes change
+			nodes.forEach((node: any) => {
+				if (node.type === 'branch' && node.data?.config) {
+					console.log('[WiringCanvas] Nodes updated, branch node config:', {
+						nodeId: node.id,
+						config: node.data.config,
+						fieldPath: node.data.config.fieldPath,
+					})
+				}
+			})
 		}
 		// Trigger validation when nodes change (including config changes)
 		// This ensures validation runs when node configs are updated via updateNodeConfig
@@ -716,11 +782,21 @@ export default function WiringCanvas({
 
 			// Allow connections to/from branch nodes without validation
 			if (sourceNode.type === 'branch' || targetNode.type === 'branch') {
-				// Extract data types from source node if it's a trigger
+				// Extract data types from the original trigger node by tracing back through the graph
 				let dataTypes: string[] = []
+
+				// If source is a trigger, use it directly
 				if (sourceNode.type === 'trigger' && sourceNode.data?.output_schema) {
 					dataTypes = extractDataTypes(sourceNode.data.output_schema)
+				} else {
+					// Otherwise, trace back to find the original trigger
+					// Use current edges to trace back
+					const triggerNode = findSourceTriggerNode(params.source!, nodes, edges)
+					if (triggerNode?.data?.output_schema) {
+						dataTypes = extractDataTypes(triggerNode.data.output_schema)
+					}
 				}
+
 				const newEdge = {
 					...params,
 					animated: true,
@@ -868,7 +944,7 @@ export default function WiringCanvas({
 				onConnectProp(params)
 			}
 		},
-		[triggers, events, nodes, onConnectProp, setEdges]
+		[triggers, events, nodes, edges, onConnectProp, setEdges, findSourceTriggerNode]
 	)
 
 	// Handle adding branch node

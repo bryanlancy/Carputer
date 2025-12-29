@@ -20,18 +20,41 @@ interface TriggerSidebarProps {
 	triggers: Trigger[]
 	onDragStart: (trigger: Trigger, event: React.DragEvent) => void
 	workspaceId?: number | null
+	currentNodes?: Array<{ id: string; type?: string; data?: any }>
 }
 
 export default function TriggerSidebar({
 	triggers,
 	onDragStart,
 	workspaceId,
+	currentNodes = [],
 }: TriggerSidebarProps) {
 	const { session } = useAuth()
 	const [testingTriggerId, setTestingTriggerId] = useState<number | null>(null)
 	const [testResult, setTestResult] = useState<string | null>(null)
 	const [collapsed, setCollapsed] = useState(false)
-	const enabledTriggers = triggers.filter(t => t.enabled)
+
+	// Find which triggers are already used in the current workspace
+	const usedTriggerIds = new Set<number>()
+	currentNodes.forEach(node => {
+		if (node.type === 'trigger' && node.data?.id) {
+			usedTriggerIds.add(node.data.id)
+		} else if (node.id.startsWith('trigger-')) {
+			// Extract trigger ID from node ID format: trigger-{id}-{timestamp}
+			const match = node.id.match(/^trigger-(\d+)/)
+			if (match) {
+				usedTriggerIds.add(parseInt(match[1]))
+			}
+		}
+	})
+
+	// Filter triggers - only show enabled triggers, but mark used ones as disabled
+	const enabledTriggers = triggers
+		.filter(t => t.enabled)
+		.map(t => ({
+			...t,
+			isUsed: usedTriggerIds.has(t.id),
+		}))
 
 	const handleTest = async (triggerId: number) => {
 		if (!workspaceId) {
@@ -124,17 +147,29 @@ export default function TriggerSidebar({
 						const dataTypes = trigger.output_schema
 							? extractDataTypes(trigger.output_schema)
 							: []
+						const isUsed = trigger.isUsed
 						return (
 							<div
 								key={trigger.id}
-								className={styles.triggerItem}
-								draggable
-								onDragStart={e => onDragStart(trigger, e)}>
+								className={`${styles.triggerItem} ${isUsed ? styles.disabled : ''}`}
+								draggable={!isUsed}
+								onDragStart={e => {
+									if (!isUsed) {
+										onDragStart(trigger, e)
+									} else {
+										e.preventDefault()
+									}
+								}}>
 								<div className={styles.triggerHeader}>
 									<span className={styles.icon}>⚡</span>
 									<span className={styles.name}>
 										{trigger.trigger_name}
 									</span>
+									{isUsed && (
+										<span className={styles.usedBadge} title="Already in workspace">
+											Used
+										</span>
+									)}
 								</div>
 								{trigger.description && (
 									<div className={styles.description}>

@@ -74,6 +74,7 @@ export default function WiringManager() {
 	const edgesRef = useRef<Edge[] | null>(null)
 	const [hasPendingChanges, setHasPendingChanges] = useState(false)
 	const [nodesWithChanges, setNodesWithChanges] = useState<Set<string>>(new Set())
+	const [currentNodesForSidebar, setCurrentNodesForSidebar] = useState<Node[]>([])
 	const savedConfigRef = useRef<WiringConfiguration | null>(null)
 
 	useEffect(() => {
@@ -293,16 +294,43 @@ export default function WiringManager() {
 			if (response.ok) {
 				const data = await response.json()
 				if (data.wiring) {
+				const nodeConfig = data.wiring.node_config || {}
+				// Merge node_config into each node's data.config
+				const nodesWithConfig = (data.wiring.nodes || []).map((node: any) => {
+					if (nodeConfig[node.id]) {
+						// Debug: Log branch node configs being loaded
+						if (node.type === 'branch') {
+							console.log('[WiringManager] Loading branch node config:', {
+								nodeId: node.id,
+								config: nodeConfig[node.id],
+								fieldPath: nodeConfig[node.id].fieldPath,
+							})
+						}
+						return {
+							...node,
+							data: {
+								...node.data,
+								config: {
+									...(node.data?.config || {}),
+									...nodeConfig[node.id],
+								},
+							},
+						}
+					}
+					return node
+				})
+
 				const config = {
-					nodes: data.wiring.nodes || [],
+					nodes: nodesWithConfig,
 					edges: data.wiring.edges || [],
 					viewport: data.wiring.viewport,
-					node_config: data.wiring.node_config || null,
+					node_config: nodeConfig,
 				}
 				setWiringConfig(config)
 				savedConfigRef.current = config
 				setHasPendingChanges(false)
 				setNodesWithChanges(new Set())
+				setCurrentNodesForSidebar(config.nodes || [])
 				} else {
 					// Start with empty config
 					const config = {
@@ -314,6 +342,7 @@ export default function WiringManager() {
 					setWiringConfig(config)
 					savedConfigRef.current = config
 					setHasPendingChanges(false)
+					setCurrentNodesForSidebar(config.nodes || [])
 				}
 			} else {
 				// Start with empty config if no wiring exists
@@ -327,6 +356,7 @@ export default function WiringManager() {
 				savedConfigRef.current = config
 				setHasPendingChanges(false)
 				setNodesWithChanges(new Set())
+				setCurrentNodesForSidebar(config.nodes || [])
 			}
 		} catch (err: any) {
 			console.error('Failed to load wiring config:', err)
@@ -340,6 +370,7 @@ export default function WiringManager() {
 			setWiringConfig(config)
 			savedConfigRef.current = config
 			setHasPendingChanges(false)
+			setCurrentNodesForSidebar(config.nodes || [])
 		}
 	}
 
@@ -364,14 +395,46 @@ export default function WiringManager() {
 			const apiUrl = getApiUrl()
 
 			// Get current nodes and edges from the canvas refs
+			// Add a small delay to ensure refs are updated after any recent node changes
+			// This is necessary because setNodes in React Flow is async
+			await new Promise(resolve => setTimeout(resolve, 100))
+
 			const nodes = nodesRef.current || wiringConfig?.nodes || []
 			const edges = edgesRef.current || wiringConfig?.edges || []
+
+			// Debug: Log all branch nodes before extracting config
+			nodes.forEach((node: any) => {
+				if (node.type === 'branch') {
+					console.log('[WiringManager] Branch node before config extraction:', {
+						nodeId: node.id,
+						hasConfig: !!node.data?.config,
+						config: node.data?.config,
+						fieldPath: node.data?.config?.fieldPath,
+						allConfigKeys: node.data?.config ? Object.keys(node.data.config) : [],
+					})
+				}
+			})
 
 			// Extract node_config from nodes (node-specific configurations like notification_id, message_code, command)
 			const nodeConfig: Record<string, any> = {}
 			nodes.forEach((node: any) => {
 				if (node.data?.config && Object.keys(node.data.config).length > 0) {
 					nodeConfig[node.id] = node.data.config
+					// Debug: Log branch node configs
+					if (node.type === 'branch') {
+						console.log('[WiringManager] Saving branch node config:', {
+							nodeId: node.id,
+							config: node.data.config,
+							fieldPath: node.data.config.fieldPath,
+							allKeys: Object.keys(node.data.config),
+						})
+					}
+				} else if (node.type === 'branch') {
+					console.warn('[WiringManager] Branch node has no config:', {
+						nodeId: node.id,
+						hasData: !!node.data,
+						dataKeys: node.data ? Object.keys(node.data) : [],
+					})
 				}
 			})
 
@@ -507,8 +570,10 @@ export default function WiringManager() {
 	const handleNodesChange = useCallback((nodes: Node[]) => {
 		// Update nodes ref immediately for change detection
 		nodesRef.current = nodes
+		// Update state for TriggerSidebar to re-render and check used triggers
+		setCurrentNodesForSidebar(nodes)
 		// Don't update wiringConfig state here - it causes re-renders that trigger loops
-		// The nodes are already tracked in nodesRef, and we can read from there when needed
+		// The nodes are already tracked in nodesRef, and TriggerSidebar will read from state
 		// Only check for pending changes
 		checkForPendingChanges(nodes, edgesRef.current || [])
 	}, [checkForPendingChanges])
@@ -603,6 +668,7 @@ export default function WiringManager() {
 						<TriggerSidebar
 							triggers={triggers}
 							workspaceId={selectedWorkspaceId}
+							currentNodes={currentNodesForSidebar}
 							onDragStart={(trigger, event) => {
 								// Store trigger data in drag event
 								event.dataTransfer.setData(
@@ -630,7 +696,7 @@ export default function WiringManager() {
 											? notificationTypes
 											: undefined,
 								}))}
-								initialNodes={wiringConfig?.nodes || []}
+								initialNodes={wiringConfig?.nodes || nodesRef.current || []}
 								initialEdges={wiringConfig?.edges || []}
 								onNodesChange={handleNodesChange}
 								onEdgesChange={handleEdgesChange}
