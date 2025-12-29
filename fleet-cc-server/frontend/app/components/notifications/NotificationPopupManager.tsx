@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWebSocket, WebSocketMessage } from '../../hooks/useWebSocket'
 import { NotificationPopup } from './NotificationPopup'
+import { getApiUrl, authenticatedFetch } from '../../utils/api'
 import styles from './NotificationPopupManager.module.scss'
 
 interface PopupNotification {
 	id: string
+	notificationId: number | null // Original notification ID from backend (UserNotification.id)
 	title: string
 	message: string
 	type: 'default' | 'warning' | 'alert' | 'success'
@@ -38,6 +40,7 @@ export default function NotificationPopupManager() {
 			if (showPopup === true || showPopup === 'true' || showPopup === 1) {
 				const popupNotification: PopupNotification = {
 					id: `${notification.id}-${Date.now()}`,
+					notificationId: notification.id ? Number(notification.id) : null,
 					title: notification.name || 'Notification',
 					message:
 						notification.message ||
@@ -63,6 +66,34 @@ export default function NotificationPopupManager() {
 		setPopups(prev => prev.filter(p => p.id !== id))
 	}, [])
 
+	const handleManualClose = useCallback(
+		async (id: string, notificationId: number | null) => {
+			// Mark notification as read if we have a notification ID
+			// Note: We don't remove from state here - that's handled by onClose after animation
+			if (notificationId !== null) {
+				try {
+					const apiUrl = getApiUrl()
+					const response = await authenticatedFetch(
+						`${apiUrl}/api/notifications/${notificationId}/view`,
+						{
+							method: 'POST',
+						}
+					)
+
+					if (!response.ok) {
+						console.error(
+							'Failed to mark notification as read:',
+							response.statusText
+						)
+					}
+				} catch (error) {
+					console.error('Error marking notification as read:', error)
+				}
+			}
+		},
+		[]
+	)
+
 	if (popups.length === 0) return null
 
 	return (
@@ -80,6 +111,9 @@ export default function NotificationPopupManager() {
 							timestamp: popup.timestamp,
 						}}
 						onClose={() => handleClose(popup.id)}
+						onManualClose={() =>
+							handleManualClose(popup.id, popup.notificationId)
+						}
 					/>
 				</div>
 			))}

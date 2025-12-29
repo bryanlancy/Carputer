@@ -19,6 +19,7 @@ interface NotificationPopupProps {
 		timestamp: Date
 	}
 	onClose: () => void
+	onManualClose?: () => void
 }
 
 const DURATION = 5000 // 5 seconds
@@ -45,6 +46,7 @@ const getIcon = (type: string): string => {
 export function NotificationPopup({
 	notification,
 	onClose,
+	onManualClose,
 }: NotificationPopupProps) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -58,6 +60,7 @@ export function NotificationPopup({
 	const timerPausedTimeRef = useRef<number>(0)
 	const pauseStartTimeRef = useRef<number | null>(null)
 	const onCloseRef = useRef(onClose)
+	const onManualCloseRef = useRef(onManualClose)
 	const handleCloseWithAnimationRef = useRef<(() => void) | null>(null)
 
 	// Entry animation and contextSafe setup using useGSAP
@@ -85,43 +88,57 @@ export function NotificationPopup({
 
 	// Create close handler using contextSafe and store in ref
 	useEffect(() => {
-		handleCloseWithAnimationRef.current = contextSafe(() => {
-			if (isExiting) return // Prevent multiple calls
-			setIsExiting(true)
+		handleCloseWithAnimationRef.current = contextSafe(
+			(isManualClose: boolean = false) => {
+				if (isExiting) return // Prevent multiple calls
+				setIsExiting(true)
 
-			const element = containerRef.current
-			if (!element) {
-				onCloseRef.current()
-				return
-			}
-
-			// Clean up timers
-			if (timerRef.current) {
-				clearTimeout(timerRef.current)
-				timerRef.current = null
-			}
-			if (hoverRestartTimerRef.current) {
-				clearTimeout(hoverRestartTimerRef.current)
-				hoverRestartTimerRef.current = null
-			}
-
-			// Animate out - fade out and slide off screen to the right
-			exitAnimationRef.current = gsap.to(element, {
-				x: 400,
-				opacity: 0,
-				duration: EXIT_ANIMATION_DURATION,
-				ease: 'power2.in',
-				onComplete: () => {
+				const element = containerRef.current
+				if (!element) {
+					// If manual close, call onManualClose first, then onClose
+					if (isManualClose && onManualCloseRef.current) {
+						onManualCloseRef.current()
+					}
 					onCloseRef.current()
-				},
-			})
-		})
+					return
+				}
+
+				// Clean up timers
+				if (timerRef.current) {
+					clearTimeout(timerRef.current)
+					timerRef.current = null
+				}
+				if (hoverRestartTimerRef.current) {
+					clearTimeout(hoverRestartTimerRef.current)
+					hoverRestartTimerRef.current = null
+				}
+
+				// Animate out - fade out and slide off screen to the right
+				exitAnimationRef.current = gsap.to(element, {
+					x: 400,
+					opacity: 0,
+					duration: EXIT_ANIMATION_DURATION,
+					ease: 'power2.in',
+					onComplete: () => {
+						// If manual close, call onManualClose first, then onClose
+						if (isManualClose && onManualCloseRef.current) {
+							onManualCloseRef.current()
+						}
+						onCloseRef.current()
+					},
+				})
+			}
+		)
 	}, [contextSafe, isExiting])
 
-	// Keep onClose ref up to date
+	// Keep onClose and onManualClose refs up to date
 	useEffect(() => {
 		onCloseRef.current = onClose
 	}, [onClose])
+
+	useEffect(() => {
+		onManualCloseRef.current = onManualClose
+	}, [onManualClose])
 
 	// Initialize timer start time on mount
 	useEffect(() => {
@@ -244,8 +261,9 @@ export function NotificationPopup({
 			<button
 				className={styles.close}
 				onClick={() => {
+					// Trigger the close animation with manual close flag
 					if (handleCloseWithAnimationRef.current) {
-						handleCloseWithAnimationRef.current()
+						handleCloseWithAnimationRef.current(true)
 					}
 				}}
 				aria-label='Close'>
