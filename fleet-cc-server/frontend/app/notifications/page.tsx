@@ -1,8 +1,46 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { parseISO } from 'date-fns'
 import { getApiUrl } from '../utils/api'
 import styles from './page.module.scss'
+
+// Helper function to parse UTC timestamps correctly
+// Always treats the timestamp as UTC and converts to local time
+function parseUTCTimestamp(timestamp: string | Date): Date {
+	// If it's already a Date object, return it
+	if (timestamp instanceof Date) {
+		return timestamp
+	}
+
+	const cleanTimestamp = String(timestamp).trim()
+
+	// If it already ends with Z, parseISO will handle it correctly
+	if (cleanTimestamp.endsWith('Z')) {
+		return parseISO(cleanTimestamp)
+	}
+
+	// If it has a timezone offset (like +05:00 or -05:00), parseISO will handle it
+	// But we want to treat the base time as UTC, so we need to extract it
+	const offsetMatch = cleanTimestamp.match(/^(.+?)([+-]\d{2}:\d{2})$/);
+	if (offsetMatch) {
+		// The timestamp has an offset - parseISO will convert it correctly
+		// But we want to treat the original time as UTC, so remove offset and add Z
+		return parseISO(offsetMatch[1] + 'Z')
+	}
+
+	// No timezone info - treat as UTC by appending Z
+	// Handle format variations
+	let normalizedTimestamp = cleanTimestamp
+	if (!normalizedTimestamp.includes('T')) {
+		normalizedTimestamp = normalizedTimestamp + 'T00:00:00'
+	}
+	// Ensure we have seconds
+	if (!normalizedTimestamp.match(/\d{2}:\d{2}:\d{2}/)) {
+		normalizedTimestamp = normalizedTimestamp.replace(/(\d{2}:\d{2})(\.\d+)?$/, '$1:00$2')
+	}
+	return parseISO(normalizedTimestamp + 'Z')
+}
 
 interface UserNotification {
   id: number
@@ -158,7 +196,20 @@ export default function NotificationsHistoryPage() {
                     </span>
                   )}
                   <span className={styles.date}>
-                    {new Date(notification.created_at).toLocaleString()}
+                    {(() => {
+                      const timestamp = String(notification.created_at)
+                      const date = parseUTCTimestamp(timestamp)
+                      // Use Intl.DateTimeFormat for explicit timezone handling
+                      return new Intl.DateTimeFormat(undefined, {
+                        year: 'numeric',
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        timeZoneName: 'short'
+                      }).format(date)
+                    })()}
                   </span>
                 </div>
               </div>

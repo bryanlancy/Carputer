@@ -3,10 +3,114 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { getApiUrl } from '../../utils/api'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, parseISO } from 'date-fns'
 import { parseMarkdown } from '../../utils/markdown'
 import { useWebSocket, WebSocketMessage } from '../../hooks/useWebSocket'
 import styles from './NotificationFeed.module.scss'
+
+// Helper function to convert UTC timestamps in message text to local time
+// Finds time patterns like "HH:mm:ss" or "HH:mm" that appear to be UTC timestamps
+// and converts them to local time format
+function convertTimestampsInMessage(
+	message: string,
+	notificationCreatedAt: string
+): string {
+	if (!message || !notificationCreatedAt) {
+		return message
+	}
+
+	// Parse the notification creation time to get the date context
+	const baseDate = parseUTCTimestamp(notificationCreatedAt)
+
+	// Pattern to match time strings like "20:27:30" or "20:27" (HH:mm:ss or HH:mm)
+	// Only match times that look like they could be timestamps (hours 0-23, minutes 0-59)
+	// This is a heuristic - we assume times in the message that match this pattern are UTC timestamps
+	const timePattern = /\b([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\b/g
+
+	return message.replace(timePattern, (match, hours, minutes, seconds) => {
+		try {
+			// Create a UTC date with the time from the message
+			const utcHours = parseInt(hours, 10)
+			const utcMinutes = parseInt(minutes, 10)
+			const utcSeconds = seconds ? parseInt(seconds, 10) : 0
+
+			// Validate the time components
+			if (
+				utcHours < 0 ||
+				utcHours > 23 ||
+				utcMinutes < 0 ||
+				utcMinutes > 59 ||
+				(seconds && (utcSeconds < 0 || utcSeconds > 59))
+			) {
+				return match // Invalid time, return original
+			}
+
+			// Use the notification's date as the base, but with the time from the message
+			const utcDate = new Date(
+				Date.UTC(
+					baseDate.getUTCFullYear(),
+					baseDate.getUTCMonth(),
+					baseDate.getUTCDate(),
+					utcHours,
+					utcMinutes,
+					utcSeconds
+				)
+			)
+
+			// Convert to local time and format
+			const localDate = new Date(utcDate)
+			const localHours = localDate.getHours().toString().padStart(2, '0')
+			const localMinutes = localDate.getMinutes().toString().padStart(2, '0')
+			const localSeconds = seconds
+				? localDate.getSeconds().toString().padStart(2, '0')
+				: ''
+
+			return seconds
+				? `${localHours}:${localMinutes}:${localSeconds}`
+				: `${localHours}:${localMinutes}`
+		} catch (error) {
+			// If conversion fails, return original
+			return match
+		}
+	})
+}
+
+// Helper function to parse UTC timestamps correctly
+// Always treats the timestamp as UTC and converts to local time
+function parseUTCTimestamp(timestamp: string | Date): Date {
+	// If it's already a Date object, return it
+	if (timestamp instanceof Date) {
+		return timestamp
+	}
+
+	const cleanTimestamp = String(timestamp).trim()
+
+	// If it already ends with Z, parseISO will handle it correctly
+	if (cleanTimestamp.endsWith('Z')) {
+		return parseISO(cleanTimestamp)
+	}
+
+	// If it has a timezone offset (like +05:00 or -05:00), parseISO will handle it
+	// But we want to treat the base time as UTC, so we need to extract it
+	const offsetMatch = cleanTimestamp.match(/^(.+?)([+-]\d{2}:\d{2})$/);
+	if (offsetMatch) {
+		// The timestamp has an offset - parseISO will convert it correctly
+		// But we want to treat the original time as UTC, so remove offset and add Z
+		return parseISO(offsetMatch[1] + 'Z')
+	}
+
+	// No timezone info - treat as UTC by appending Z
+	// Handle format variations
+	let normalizedTimestamp = cleanTimestamp
+	if (!normalizedTimestamp.includes('T')) {
+		normalizedTimestamp = normalizedTimestamp + 'T00:00:00'
+	}
+	// Ensure we have seconds
+	if (!normalizedTimestamp.match(/\d{2}:\d{2}:\d{2}/)) {
+		normalizedTimestamp = normalizedTimestamp.replace(/(\d{2}:\d{2})(\.\d+)?$/, '$1:00$2')
+	}
+	return parseISO(normalizedTimestamp + 'Z')
+}
 
 interface Tag {
 	id: number
@@ -404,7 +508,10 @@ export default function NotificationFeed({
 												}
 												dangerouslySetInnerHTML={{
 													__html: parseMarkdown(
-														displayMessage
+														convertTimestampsInMessage(
+															displayMessage,
+															notification.created_at
+														)
 													),
 												}}
 											/>
@@ -414,12 +521,26 @@ export default function NotificationFeed({
 											<span
 												className={
 													styles.notificationTime
+												}
+												title={
+													notification.created_at
+														? (() => {
+																const date = parseUTCTimestamp(notification.created_at)
+																return new Intl.DateTimeFormat(undefined, {
+																	year: 'numeric',
+																	month: 'numeric',
+																	day: 'numeric',
+																	hour: '2-digit',
+																	minute: '2-digit',
+																	second: '2-digit',
+																	timeZoneName: 'short'
+																}).format(date)
+														  })()
+														: undefined
 												}>
 												{notification.created_at
 													? formatDistanceToNow(
-															new Date(
-																notification.created_at
-															),
+															parseUTCTimestamp(notification.created_at),
 															{ addSuffix: true }
 													  )
 													: 'Just now'}

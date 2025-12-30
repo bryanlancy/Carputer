@@ -233,7 +233,20 @@ export class TemplateService {
 				) {
 					// Found a known token, add formatted value
 					try {
-						const formatted = format(date, token)
+						// Format in UTC by creating a new Date object with UTC components
+						// This ensures timestamps in messages are in UTC and can be converted to local time on frontend
+						const utcDate = new Date(
+							Date.UTC(
+								date.getUTCFullYear(),
+								date.getUTCMonth(),
+								date.getUTCDate(),
+								date.getUTCHours(),
+								date.getUTCMinutes(),
+								date.getUTCSeconds(),
+								date.getUTCMilliseconds()
+							)
+						)
+						const formatted = format(utcDate, token)
 						result += formatted
 						position += token.length
 						matched = true
