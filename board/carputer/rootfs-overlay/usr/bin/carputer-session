@@ -3,14 +3,11 @@
 # Wrapper launched from /etc/inittab to start the Carputer hub
 # as the unprivileged carputer user with a clean environment.
 
-# IMMEDIATE console output to verify script is running
-echo "CARPUTER-SESSION: Script starting..." > /dev/tty1 2>&1
-
 BOOT_DEV="/dev/mmcblk0p1"
 BOOT_MOUNT="/boot"
 SESSION_USER="carputer"
 SESSION_HOME="/home/${SESSION_USER}"
-SESSION_UID=$(id -u "${SESSION_USER}")
+SESSION_UID=$(id -u "${SESSION_USER}" 2>/dev/null || echo "1000")
 DATA_DIR="${SESSION_HOME}/.local/share/carputer"
 LOG_DIR="${DATA_DIR}/logs"
 IPC_DIR="${DATA_DIR}/ipc"
@@ -20,11 +17,11 @@ BOOT_LOG="/boot/carputer-session.log"
 UI_BIN="/usr/bin/carputer-ui"
 FALLBACK_BIN="/usr/bin/carputer-hub"
 DISABLE_FLAG="/etc/carputer/ui.disabled"
+QML_FILE="/usr/share/carputer/ui/Main.qml"
 
-mkdir -p "${LOG_DIR}" "${IPC_DIR}" "${RUNTIME_DIR}"
-chown -R "${SESSION_USER}:${SESSION_USER}" "${DATA_DIR}" "${RUNTIME_DIR}" 2>/dev/null
-chmod 0755 "${DATA_DIR}" "${LOG_DIR}" "${IPC_DIR}" 2>/dev/null
-chmod 0700 "${RUNTIME_DIR}" 2>/dev/null
+# Redirect ALL output immediately to prevent console spam
+# We'll use boot log if available, otherwise session log
+mkdir -p "${LOG_DIR}" "${IPC_DIR}" "${RUNTIME_DIR}" 2>/dev/null
 
 # Try to mount boot partition (may fail if already mounted or device not available)
 if ! mountpoint -q "${BOOT_MOUNT}" 2>/dev/null; then
@@ -32,37 +29,43 @@ if ! mountpoint -q "${BOOT_MOUNT}" 2>/dev/null; then
     mount -t vfat "${BOOT_DEV}" "${BOOT_MOUNT}" 2>/dev/null || true
 fi
 
-# Write initial boot info to log (but don't redirect yet)
-# Only write to boot log if boot partition is actually mounted
-if mountpoint -q "${BOOT_MOUNT}" 2>/dev/null && touch "${BOOT_LOG}" 2>/dev/null; then
+# Determine log file - prefer boot log if available and writable by root
+# But for the launch script, we'll use the session log which the user can write to
+if mountpoint -q "${BOOT_MOUNT}" 2>/dev/null && [ "$(id -u)" -eq 0 ] && touch "${BOOT_LOG}" 2>/dev/null; then
     chmod 0644 "${BOOT_LOG}" 2>/dev/null || true
-    ln -sf "${BOOT_LOG}" "${SESSION_LOG}" 2>/dev/null || true
     SESSION_LOG="${BOOT_LOG}"
-    echo "[$(date -Iseconds)] carputer-session starting" >> "${SESSION_LOG}" 2>/dev/null || true
 fi
+# Always ensure session log directory exists and is writable
+mkdir -p "${LOG_DIR}" 2>/dev/null || true
+chmod 0755 "${LOG_DIR}" 2>/dev/null || true
+
+# Redirect all output to log immediately (silent boot)
+exec >>"${SESSION_LOG}" 2>&1
+
+echo "[$(date -Iseconds)] carputer-session starting"
+
+# Set up directories and permissions
+chown -R "${SESSION_USER}:${SESSION_USER}" "${DATA_DIR}" "${RUNTIME_DIR}" 2>/dev/null || true
+chmod 0755 "${DATA_DIR}" "${LOG_DIR}" "${IPC_DIR}" 2>/dev/null || true
+chmod 0700 "${RUNTIME_DIR}" 2>/dev/null || true
 
 # Only write dmesg if boot is mounted
 if mountpoint -q "${BOOT_MOUNT}" 2>/dev/null; then
     dmesg > "${BOOT_MOUNT}/dmesg.log" 2>/dev/null || true
 fi
 
-# Check if UI is disabled BEFORE redirecting output
-echo "CARPUTER-SESSION: Checking UI disable flag..." > /dev/tty1 2>&1
-echo "CARPUTER-SESSION: DISABLE_FLAG=${DISABLE_FLAG}" > /dev/tty1 2>&1
-echo "CARPUTER-SESSION: Checking if file exists..." > /dev/tty1 2>&1
+# Check if UI is disabled
 if [ -f "${DISABLE_FLAG}" ]; then
-    echo "CARPUTER-SESSION: UI disable flag FOUND!" > /dev/tty1 2>&1
-    echo "[$(date -Iseconds)] UI disabled via ${DISABLE_FLAG}; starting shell instead" >> "${SESSION_LOG}" 2>/dev/null || true
+    echo "[$(date -Iseconds)] UI disabled via ${DISABLE_FLAG}; starting shell instead"
+    # Restore console output for shell mode
+    exec >/dev/tty1 2>&1
+    printf '\033[2J\033[H'  # Clear screen and move cursor to top
+    echo "=========================================="
+    echo "  Carputer Shell (UI Disabled)"
+    echo "=========================================="
+    echo ""
 
-    # Print a visible message to confirm we're running
-    echo "CARPUTER-SESSION: UI disabled, launching shell..." > /dev/tty1 2>&1
-    printf '\033[2J\033[H' > /dev/tty1 2>&1  # Clear screen and move cursor to top
-    echo "==========================================" > /dev/tty1
-    echo "  Carputer Shell (UI Disabled)" > /dev/tty1
-    echo "==========================================" > /dev/tty1
-    echo "" > /dev/tty1
-
-    # Launch shell - inittab should have already set up stdin/stdout/stderr
+    # Launch shell
     if [ "$(id -u)" -eq 0 ]; then
         if command -v su >/dev/null 2>&1; then
             if su - "${SESSION_USER}" -c "true" >/dev/null 2>&1; then
@@ -78,21 +81,25 @@ if [ -f "${DISABLE_FLAG}" ]; then
     exec /bin/sh -l
 fi
 
-# If we get here, UI is enabled
-echo "CARPUTER-SESSION: UI disable flag NOT found, UI should be enabled" > /dev/tty1 2>&1
-echo "CARPUTER-SESSION: DISABLE_FLAG path was: ${DISABLE_FLAG}" > /dev/tty1 2>&1
-ls -la /etc/carputer/ > /dev/tty1 2>&1 || echo "CARPUTER-SESSION: /etc/carputer/ does not exist!" > /dev/tty1 2>&1
+# UI is enabled - ensure silent boot
+echo "[$(date -Iseconds)] UI mode enabled"
 
-# UI is enabled - now redirect output to log
-exec >>"${SESSION_LOG}" 2>&1
+# Add a delay to let system services (like SSH) start first
+# Launch UI in background so we don't block
+(
+    sleep 10
+    echo "[$(date -Iseconds)] Delayed UI launch starting" >>"${SESSION_LOG}" 2>&1
+) &
+DELAY_PID=$!
 
-echo "[$(date -Iseconds)] carputer-session starting (UI mode)"
+echo "[$(date -Iseconds)] UI launch will start after delay (PID ${DELAY_PID})"
 
 # Clear the framebuffer to hide any preceding boot noise
-printf '\033c'
+printf '\033[2J\033[H' > /dev/tty1 2>/dev/null || true
 
+# Verify UI binary exists
 if [ ! -x "${UI_BIN}" ]; then
-    echo "[$(date -Iseconds)] carputer-ui missing, falling back to carputer-hub"
+    echo "[$(date -Iseconds)] ERROR: carputer-ui binary not found at ${UI_BIN}, falling back to carputer-hub"
     if [ "$(id -u)" -eq 0 ]; then
         exec su - "${SESSION_USER}" -c "${FALLBACK_BIN}"
     else
@@ -100,17 +107,324 @@ if [ ! -x "${UI_BIN}" ]; then
     fi
 fi
 
-QT_ENV="XDG_RUNTIME_DIR=${RUNTIME_DIR} QT_QPA_PLATFORM=eglfs QT_LOGGING_RULES=\"*.debug=false;qt.qpa.*=false\" QT_QUICK_CONTROLS_STYLE=Basic"
+# Verify QML file exists
+if [ ! -f "${QML_FILE}" ]; then
+    echo "[$(date -Iseconds)] ERROR: QML file not found at ${QML_FILE}"
+    echo "[$(date -Iseconds)] Falling back to carputer-hub"
+    if [ "$(id -u)" -eq 0 ]; then
+        exec su - "${SESSION_USER}" -c "${FALLBACK_BIN}"
+    else
+        exec "${FALLBACK_BIN}"
+    fi
+fi
 
-echo "[$(date -Iseconds)] launching carputer-ui"
+# Set up Qt environment with UTF-8 locale
+export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+# Platform will be set after DRM device detection (eglfs or linuxfb)
+# Enable extensive Qt logging for debugging
+export QT_LOGGING_RULES="qt.qpa.*=true;qt.qml.*=true;qt.quick.*=true"
+export QT_QUICK_CONTROLS_STYLE="Basic"
+# Set UTF-8 locale for Qt
+export LANG="C.UTF-8"
+export LC_ALL="C.UTF-8"
+
+# Wait for DRM devices to be created (they may not exist immediately after boot)
+echo "[$(date -Iseconds)] Waiting for DRM devices to be available..."
+DRM_WAIT_COUNT=0
+while [ ! -d /dev/dri ] && [ ${DRM_WAIT_COUNT} -lt 10 ]; do
+    sleep 1
+    DRM_WAIT_COUNT=$((DRM_WAIT_COUNT + 1))
+done
+
+# Detect available DRM devices - prefer connected ones
+DRM_DEVICE=""
+# Check card0 first (usually the primary display)
+if [ -c /dev/dri/card0 ]; then
+    # Check if it's connected
+    if [ -f /sys/class/drm/card0/status ]; then
+        STATUS=$(cat /sys/class/drm/card0/status 2>/dev/null || echo "unknown")
+        if [ "${STATUS}" = "connected" ]; then
+            DRM_DEVICE="/dev/dri/card0"
+        fi
+    fi
+    # If no status file or not connected, still use it if it's the only one
+    if [ -z "${DRM_DEVICE}" ] && [ -c /dev/dri/card0 ]; then
+        DRM_DEVICE="/dev/dri/card0"
+    fi
+fi
+# Fallback to card1 if card0 not available
+if [ -z "${DRM_DEVICE}" ] && [ -c /dev/dri/card1 ]; then
+    if [ -f /sys/class/drm/card1/status ]; then
+        STATUS=$(cat /sys/class/drm/card1/status 2>/dev/null || echo "unknown")
+        if [ "${STATUS}" = "connected" ]; then
+            DRM_DEVICE="/dev/dri/card1"
+        fi
+    fi
+    if [ -z "${DRM_DEVICE}" ] && [ -c /dev/dri/card1 ]; then
+        DRM_DEVICE="/dev/dri/card1"
+    fi
+fi
+
+if [ -z "${DRM_DEVICE}" ]; then
+    echo "[$(date -Iseconds)] WARNING: No DRM device found! Listing /dev/dri:"
+    ls -la /dev/dri/ 2>&1 || echo "  /dev/dri does not exist"
+    echo "[$(date -Iseconds)] Checking kernel modules:"
+    lsmod | grep -E "(vc4|drm)" || echo "  No VC4/DRM modules loaded"
+    echo "[$(date -Iseconds)] Falling back to linuxfb platform (framebuffer)"
+    # Use linuxfb instead of eglfs when DRM is not available
+    export QT_QPA_PLATFORM="linuxfb"
+    export QT_QPA_EGLFS_INTEGRATION=""
+else
+    # For Qt6 on Raspberry Pi with VC4, use eglfs_kms integration
+    export QT_QPA_EGLFS_INTEGRATION="eglfs_kms"
+    # Use JSON config file to force device selection (more reliable than env var)
+    if [ -f /etc/qt6/eglfs_kms_cfg.json ]; then
+        export QT_QPA_EGLFS_KMS_CONFIG="/etc/qt6/eglfs_kms_cfg.json"
+        echo "[$(date -Iseconds)] Using EGLFS KMS config: ${QT_QPA_EGLFS_KMS_CONFIG}"
+    elif [ -n "${DRM_DEVICE}" ]; then
+        export QT_QPA_EGLFS_KMS_DEVICE="${DRM_DEVICE}"
+        echo "[$(date -Iseconds)] Using EGLFS KMS device: ${QT_QPA_EGLFS_KMS_DEVICE}"
+    fi
+fi
+
+# Additional EGLFS options for debugging
+export QT_QPA_EGLFS_DEBUG=1
+# Try to force a specific output/display
+# export QT_QPA_EGLFS_FORCE888=1
+
+echo "[$(date -Iseconds)] Launching carputer-ui (QML: ${QML_FILE})"
+echo "[$(date -Iseconds)] EGLFS integration: ${QT_QPA_EGLFS_INTEGRATION}"
+echo "[$(date -Iseconds)] DRM device: ${DRM_DEVICE:-none found}"
+echo "[$(date -Iseconds)] Locale: LANG=${LANG} LC_ALL=${LC_ALL}"
+echo "[$(date -Iseconds)] XDG_RUNTIME_DIR: ${XDG_RUNTIME_DIR}"
+
+# Build environment variable string
+ENV_VARS="XDG_RUNTIME_DIR='${RUNTIME_DIR}'"
+# Platform will be set based on DRM availability (eglfs or linuxfb)
+# Use the platform that was already set in the export above
+if [ -z "${DRM_DEVICE}" ]; then
+    ENV_VARS="${ENV_VARS} QT_QPA_PLATFORM='linuxfb'"
+    ENV_VARS="${ENV_VARS} QT_QPA_EGLFS_INTEGRATION=''"
+else
+    ENV_VARS="${ENV_VARS} QT_QPA_PLATFORM='eglfs'"
+fi
+ENV_VARS="${ENV_VARS} QT_LOGGING_RULES='${QT_LOGGING_RULES}'"
+ENV_VARS="${ENV_VARS} QT_QUICK_CONTROLS_STYLE='Basic'"
+ENV_VARS="${ENV_VARS} LANG='C.UTF-8' LC_ALL='C.UTF-8'"
+# Only set EGLFS variables if using eglfs platform
+if [ -n "${DRM_DEVICE}" ]; then
+    ENV_VARS="${ENV_VARS} QT_QPA_EGLFS_INTEGRATION='${QT_QPA_EGLFS_INTEGRATION}'"
+    ENV_VARS="${ENV_VARS} QT_QPA_EGLFS_DEBUG='1'"
+fi
+# Only set Mesa/EGLFS variables if using eglfs platform
+if [ -n "${DRM_DEVICE}" ]; then
+    # Try VC4 first, but allow swrast fallback if VC4 fails
+    # This is a workaround until we can get V3D working properly
+    ENV_VARS="${ENV_VARS} MESA_LOADER_DRIVER_OVERRIDE='vc4'"
+    ENV_VARS="${ENV_VARS} LIBGL_ALWAYS_SOFTWARE='0'"
+    # Use JSON config if available, otherwise use device env var
+    if [ -f /etc/qt6/eglfs_kms_cfg.json ]; then
+        ENV_VARS="${ENV_VARS} QT_QPA_EGLFS_KMS_CONFIG='/etc/qt6/eglfs_kms_cfg.json'"
+    else
+        ENV_VARS="${ENV_VARS} QT_QPA_EGLFS_KMS_DEVICE='${DRM_DEVICE}'"
+    fi
+fi
+
+# Launch UI in background after delay - use simple approach to avoid blocking
+# Create a wrapper script that will be executed in background
+LAUNCH_SCRIPT="/tmp/carputer-ui-launch-$$.sh"
+cat > "${LAUNCH_SCRIPT}" << 'LAUNCH_EOF'
+#!/bin/sh
+# Use a here-doc with quoted delimiter to avoid variable expansion issues
+# Use session log in user's home directory (writable by user)
+LOG_FILE="${LOG_DIR}/session.log"
+mkdir -p "${LOG_DIR}" 2>/dev/null || true
+echo "[$(date -Iseconds)] UI launch script starting" >>"${LOG_FILE}" 2>&1
+sleep 10
+echo "[$(date -Iseconds)] UI launch delay complete, checking system state" >>"${LOG_FILE}" 2>&1
+
+# Wait for DRM devices to be created (they may not exist immediately after boot)
+echo "[$(date -Iseconds)] Waiting for DRM devices to be available..." >>"${LOG_FILE}" 2>&1
+DRM_WAIT_COUNT=0
+while [ ! -c /dev/dri/card0 ] && [ ! -c /dev/dri/card1 ] && [ ${DRM_WAIT_COUNT} -lt 30 ]; do
+    sleep 1
+    DRM_WAIT_COUNT=$((DRM_WAIT_COUNT + 1))
+done
+
+# Log system state for debugging
+echo "[$(date -Iseconds)] DRM devices:" >>"${LOG_FILE}" 2>&1
+if [ -d /dev/dri ]; then
+    ls -la /dev/dri/ 2>&1 >>"${LOG_FILE}" || true
+else
+    echo "[$(date -Iseconds)] WARNING: /dev/dri directory does not exist!" >>"${LOG_FILE}" 2>&1
+fi
+echo "[$(date -Iseconds)] Display info:" >>"${LOG_FILE}" 2>&1
+if [ -d /sys/class/drm ]; then
+    cat /sys/class/drm/card*/status 2>&1 >>"${LOG_FILE}" || true
+else
+    echo "[$(date -Iseconds)] WARNING: /sys/class/drm directory does not exist!" >>"${LOG_FILE}" 2>&1
+fi
+echo "[$(date -Iseconds)] Processes:" >>"${LOG_FILE}" 2>&1
+ps aux | grep -E "(carputer|qt|egl)" >>"${LOG_FILE}" 2>&1 || true
+
+# Set up environment - Force linuxfb for now since eglfs/GBM is not working properly
+# TODO: Fix Mesa/GBM/V3D driver issues to enable hardware acceleration
+echo "[$(date -Iseconds)] Forcing linuxfb platform (eglfs/GBM not working yet)" >>"${LOG_FILE}" 2>&1
+
+# Check if framebuffer exists
+if [ -c /dev/fb0 ]; then
+    echo "[$(date -Iseconds)] Framebuffer /dev/fb0 found" >>"${LOG_FILE}" 2>&1
+    ls -la /dev/fb0 >>"${LOG_FILE}" 2>&1 || true
+else
+    echo "[$(date -Iseconds)] WARNING: Framebuffer /dev/fb0 NOT found!" >>"${LOG_FILE}" 2>&1
+fi
+
+# Set environment variables directly (don't use ENV_VARS string with quotes)
+# Parse ENV_VARS to extract individual variables, but override with linuxfb settings
+export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+export QT_QPA_PLATFORM="linuxfb:fb=/dev/fb0"
+export QT_LOGGING_RULES="${QT_LOGGING_RULES}"
+export QT_QUICK_CONTROLS_STYLE="Basic"
+export LANG="C.UTF-8"
+export LC_ALL="C.UTF-8"
+# Explicitly unset EGLFS-related variables
+unset QT_QPA_EGLFS_INTEGRATION
+unset QT_QPA_EGLFS_DEBUG
+unset QT_QPA_EGLFS_KMS_CONFIG
+unset QT_QPA_EGLFS_KMS_DEVICE
+unset MESA_LOADER_DRIVER_OVERRIDE
+unset LIBGL_ALWAYS_SOFTWARE
+
+cd "${SESSION_HOME}" 2>/dev/null || cd /
+
+echo "[$(date -Iseconds)] Final platform setting:" >>"${LOG_FILE}" 2>&1
+echo "QT_QPA_PLATFORM=${QT_QPA_PLATFORM}" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] Checking framebuffer:" >>"${LOG_FILE}" 2>&1
+if [ -c /dev/fb0 ]; then
+    echo "[$(date -Iseconds)] /dev/fb0 exists, permissions:" >>"${LOG_FILE}" 2>&1
+    ls -la /dev/fb0 >>"${LOG_FILE}" 2>&1 || true
+    echo "[$(date -Iseconds)] Current user: $(whoami), groups: $(groups)" >>"${LOG_FILE}" 2>&1
+    echo "[$(date -Iseconds)] Checking /etc/group for video group:" >>"${LOG_FILE}" 2>&1
+    grep "^video:" /etc/group >>"${LOG_FILE}" 2>&1 || echo "[$(date -Iseconds)] WARNING: video group not found in /etc/group" >>"${LOG_FILE}" 2>&1
+    echo "[$(date -Iseconds)] Checking if user is in video group:" >>"${LOG_FILE}" 2>&1
+    if id -nG | grep -q video; then
+        echo "[$(date -Iseconds)] User IS in video group" >>"${LOG_FILE}" 2>&1
+    else
+        echo "[$(date -Iseconds)] WARNING: User is NOT in video group (may not be able to access /dev/fb0)" >>"${LOG_FILE}" 2>&1
+    fi
+else
+    echo "[$(date -Iseconds)] ERROR: /dev/fb0 does not exist!" >>"${LOG_FILE}" 2>&1
+fi
+
+echo "[$(date -Iseconds)] Launching ${UI_BIN}" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] Environment:" >>"${LOG_FILE}" 2>&1
+env | grep -E "(QT_|EGL|DRM|XDG)" >>"${LOG_FILE}" 2>&1 || true
+
+# Try to launch UI and capture any errors
+if [ ! -x "${UI_BIN}" ]; then
+    echo "[$(date -Iseconds)] ERROR: ${UI_BIN} is not executable" >>"${LOG_FILE}" 2>&1
+    exit 1
+fi
+
+echo "[$(date -Iseconds)] Executing ${UI_BIN}" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] Checking if QML file exists..." >>"${LOG_FILE}" 2>&1
+if [ -f /usr/share/carputer/ui/Main.qml ]; then
+    echo "[$(date -Iseconds)] QML file found at /usr/share/carputer/ui/Main.qml" >>"${LOG_FILE}" 2>&1
+else
+    echo "[$(date -Iseconds)] ERROR: QML file NOT found at /usr/share/carputer/ui/Main.qml" >>"${LOG_FILE}" 2>&1
+    echo "[$(date -Iseconds)] Listing /usr/share/carputer/ui/:" >>"${LOG_FILE}" 2>&1
+    ls -la /usr/share/carputer/ui/ >>"${LOG_FILE}" 2>&1 || true
+fi
+echo "[$(date -Iseconds)] Checking if UI binary exists and is executable..." >>"${LOG_FILE}" 2>&1
+if [ -x "${UI_BIN}" ]; then
+    echo "[$(date -Iseconds)] UI binary is executable" >>"${LOG_FILE}" 2>&1
+else
+    echo "[$(date -Iseconds)] ERROR: UI binary is NOT executable or doesn't exist" >>"${LOG_FILE}" 2>&1
+    exit 1
+fi
+
+# Only check Mesa drivers if using eglfs
+if [ "${QT_QPA_PLATFORM}" != "linuxfb" ] && [ -z "${DRM_DEVICE_LAUNCH}" ]; then
+    echo "[$(date -Iseconds)] Checking Mesa driver files..." >>"${LOG_FILE}" 2>&1
+    if [ -f /usr/lib/dri/vc4_dri.so ]; then
+        echo "[$(date -Iseconds)] VC4 driver found: /usr/lib/dri/vc4_dri.so" >>"${LOG_FILE}" 2>&1
+    else
+        echo "[$(date -Iseconds)] WARNING: VC4 driver NOT found" >>"${LOG_FILE}" 2>&1
+    fi
+    echo "[$(date -Iseconds)] Mesa environment variables:" >>"${LOG_FILE}" 2>&1
+    env | grep -E "(MESA|LIBGL|GBM)" >>"${LOG_FILE}" 2>&1 || true
+fi
+
+# For linuxfb, check framebuffer console status and unbind it
+if echo "${QT_QPA_PLATFORM}" | grep -q "linuxfb"; then
+    echo "[$(date -Iseconds)] Using linuxfb platform, checking framebuffer console..." >>"${LOG_FILE}" 2>&1
+    if [ -f /sys/class/vtconsole/vtcon1/name ]; then
+        echo "[$(date -Iseconds)] Framebuffer console: $(cat /sys/class/vtconsole/vtcon1/name)" >>"${LOG_FILE}" 2>&1
+    fi
+    # Try to unbind framebuffer console if possible (may fail, that's OK)
+    if [ -w /sys/class/vtconsole/vtcon1/bind ]; then
+        echo 0 > /sys/class/vtconsole/vtcon1/bind 2>>"${LOG_FILE}" || true
+        echo "[$(date -Iseconds)] Attempted to unbind framebuffer console" >>"${LOG_FILE}" 2>&1
+    fi
+    # Also try to switch away from any active VT
+    if [ -w /sys/class/tty/console/active ]; then
+        echo "[$(date -Iseconds)] Current console: $(cat /sys/class/tty/console/active)" >>"${LOG_FILE}" 2>&1
+    fi
+fi
+
+echo "[$(date -Iseconds)] Starting UI with platform: ${QT_QPA_PLATFORM}" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] Full command: ${UI_BIN}" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] Working directory: $(pwd)" >>"${LOG_FILE}" 2>&1
+echo "[$(date -Iseconds)] User: $(whoami), UID: $(id -u), GID: $(id -g)" >>"${LOG_FILE}" 2>&1
+
+# Start UI and monitor it
+"${UI_BIN}" >>"${LOG_FILE}" 2>&1 &
+UI_PID=$!
+echo "[$(date -Iseconds)] UI started with PID ${UI_PID}" >>"${LOG_FILE}" 2>&1
+
+# Wait a moment and check if it's still running
+sleep 2
+if kill -0 "${UI_PID}" 2>/dev/null; then
+    echo "[$(date -Iseconds)] UI process ${UI_PID} is still running" >>"${LOG_FILE}" 2>&1
+    # Wait for it to exit
+    wait "${UI_PID}"
+    EXIT_CODE=$?
+    echo "[$(date -Iseconds)] UI process ${UI_PID} exited with code ${EXIT_CODE}" >>"${LOG_FILE}" 2>&1
+else
+    echo "[$(date -Iseconds)] ERROR: UI process ${UI_PID} exited immediately!" >>"${LOG_FILE}" 2>&1
+    EXIT_CODE=1
+fi
+exit ${EXIT_CODE}
+LAUNCH_EOF
+
+# Replace variables in the script
+sed -i "s|\${LOG_DIR}|${LOG_DIR}|g" "${LAUNCH_SCRIPT}"
+sed -i "s|\${RUNTIME_DIR}|${RUNTIME_DIR}|g" "${LAUNCH_SCRIPT}"
+sed -i "s|\${QT_LOGGING_RULES}|${QT_LOGGING_RULES}|g" "${LAUNCH_SCRIPT}"
+sed -i "s|\${SESSION_HOME}|${SESSION_HOME}|g" "${LAUNCH_SCRIPT}"
+sed -i "s|\${UI_BIN}|${UI_BIN}|g" "${LAUNCH_SCRIPT}"
+chmod +x "${LAUNCH_SCRIPT}"
+
+# Launch in background using the simplest method possible
+# Log the launch attempt
+echo "[$(date -Iseconds)] Launching UI script: ${LAUNCH_SCRIPT}" >>"${SESSION_LOG}" 2>&1
 
 if [ "$(id -u)" -eq 0 ]; then
-    exec su - "${SESSION_USER}" -c "${QT_ENV} ${UI_BIN}"
+    # Use su without -l (no login shell) to avoid profile loading that might hang
+    # Use -c with a simple command
+    # Redirect both stdout and stderr to the log
+    nohup su "${SESSION_USER}" -c "${LAUNCH_SCRIPT}" >>"${SESSION_LOG}" 2>&1 &
+    LAUNCH_PID=$!
 else
-    export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
-    export QT_QPA_PLATFORM="eglfs"
-    export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
-    export QT_QUICK_CONTROLS_STYLE="Basic"
-    exec "${UI_BIN}"
+    nohup "${LAUNCH_SCRIPT}" >>"${SESSION_LOG}" 2>&1 &
+    LAUNCH_PID=$!
 fi
+
+echo "[$(date -Iseconds)] UI launch script created and started in background (PID ${LAUNCH_PID}, will launch after 10s delay)"
+echo "[$(date -Iseconds)] UI launch script created and started in background (PID ${LAUNCH_PID})" >>"${SESSION_LOG}" 2>&1
+echo "[$(date -Iseconds)] Script exiting immediately to allow SSH and other services to start"
+
+# Exit immediately - don't wait for anything
+# The UI will launch in background after the delay
+exit 0
 

@@ -183,7 +183,7 @@ EOF
     log "Generated NFS-root cmdline for host ${host_ip} at ${GENERATED_CMDLINE}"
   else
     cat > "${GENERATED_CMDLINE}" <<'EOF'
-console=serial0,115200 console=tty1 root=/dev/mmcblk0p2 rw rootwait loglevel=4 vt.global_cursor_default=1
+console=serial0,115200 console=tty1 root=/dev/mmcblk0p2 rw rootwait quiet loglevel=3 vt.global_cursor_default=0 splash plymouth.ignore-serial-consoles logo.nologo
 EOF
     log "Generated SD-root cmdline at ${GENERATED_CMDLINE} (CARPUTER_USE_NFS=${normalized:-0})"
   fi

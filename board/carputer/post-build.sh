@@ -18,6 +18,44 @@ CARPUTER_GID=1000
 if ! grep -q '^carputer:' "${TARGET_DIR}/etc/group"; then
     echo "carputer:x:${CARPUTER_GID}:" >> "${TARGET_DIR}/etc/group"
 fi
+
+# Add carputer user to video group for DRM access
+# First, fix any malformed video group line
+if grep -q '^video:' "${TARGET_DIR}/etc/group"; then
+    # Get the current video group line
+    VIDEO_LINE=$(grep '^video:' "${TARGET_DIR}/etc/group")
+    # Check if line is malformed (GID field contains comma, which means users got mixed into GID)
+    if echo "${VIDEO_LINE}" | grep -q '^video:[^:]*:[^:]*,'; then
+        # Line is malformed, reconstruct it properly
+        # Format should be: video:x:28:carputer
+        # Extract just the GID (should be 28)
+        VIDEO_GID="28"
+        # Check if carputer is already in the malformed line
+        if echo "${VIDEO_LINE}" | grep -q 'carputer'; then
+            NEW_VIDEO_LINE="video:x:${VIDEO_GID}:carputer"
+        else
+            NEW_VIDEO_LINE="video:x:${VIDEO_GID}:carputer"
+        fi
+        sed -i "s|^video:.*|${NEW_VIDEO_LINE}|" "${TARGET_DIR}/etc/group"
+        echo "[post-build] Fixed malformed video group line and added carputer user" >&2
+    else
+        # Line is properly formatted, just add carputer if not present
+        VIDEO_USERS=$(echo "${VIDEO_LINE}" | cut -d: -f4)
+        if [ -z "${VIDEO_USERS}" ]; then
+            # No users, add carputer
+            sed -i 's|^video:\([^:]*\):\([^:]*\):$|video:\1:\2:carputer|' "${TARGET_DIR}/etc/group"
+            echo "[post-build] Added carputer user to video group for DRM access" >&2
+        elif ! echo "${VIDEO_USERS}" | grep -q 'carputer'; then
+            # Has users but not carputer, append it
+            sed -i "s|^video:\([^:]*\):\([^:]*\):\(.*\)|video:\1:\2:\3,carputer|" "${TARGET_DIR}/etc/group"
+            echo "[post-build] Added carputer user to video group for DRM access" >&2
+        fi
+    fi
+else
+    # Create video group with carputer user if it doesn't exist
+    echo "video:x:28:carputer" >> "${TARGET_DIR}/etc/group"
+    echo "[post-build] Created video group with carputer user" >&2
+fi
 if ! grep -q '^carputer:' "${TARGET_DIR}/etc/gshadow" 2>/dev/null; then
     if [ -f "${TARGET_DIR}/etc/gshadow" ]; then
         echo "carputer:!::" >> "${TARGET_DIR}/etc/gshadow"
@@ -226,7 +264,9 @@ if [ -x "${TARGET_DIR}/sbin/agetty" ]; then
     ln -sf /sbin/agetty "${TARGET_DIR}/sbin/getty"
 fi
 
-sed -i 's#^tty1::.*#tty1::respawn:/usr/bin/carputer-session#' "${TARGET_DIR}/etc/inittab"
+# Use 'once' instead of 'respawn' to prevent boot loops if UI has issues
+# This allows the system to boot even if the UI fails
+sed -i 's#^tty1::.*#tty1::once:/usr/bin/carputer-session#' "${TARGET_DIR}/etc/inittab"
 chmod 0755 "${TARGET_DIR}/usr/bin/carputer-session"
 chmod 0755 "${TARGET_DIR}/etc/init.d/rcS"
 
