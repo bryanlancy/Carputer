@@ -246,3 +246,6 @@ export default function DevicesPage() {
   )
 }
 
+
+
+
