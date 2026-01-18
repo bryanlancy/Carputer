@@ -67,11 +67,12 @@ ApplicationWindow {
 
         Label {
             text: "Hello World"
-            font.pixelSize: 72
+            font.pixelSize: 96
             font.bold: true
             color: "#f8fbff"
             Layout.alignment: Qt.AlignHCenter
-            opacity: 0.85
+            Layout.topMargin: 40
+            Layout.bottomMargin: 20
         }
 
         Text {
