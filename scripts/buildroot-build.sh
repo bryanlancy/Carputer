@@ -187,6 +187,10 @@ console=serial0,115200 console=tty1 root=/dev/mmcblk0p2 rw rootwait quiet loglev
 EOF
     log "Generated SD-root cmdline at ${GENERATED_CMDLINE} (CARPUTER_USE_NFS=${normalized:-0})"
   fi
+
+  # Buildroot defconfig points at board/carputer/cmdline.txt; copy generated so the image uses .env choice
+  cp "${GENERATED_CMDLINE}" "${REPO_ROOT}/board/carputer/cmdline.txt"
+  log "Updated board/carputer/cmdline.txt for image"
 }
 
 prepare_hostname() {
@@ -506,6 +510,9 @@ case "${COMMAND}" in
     prepare_authorized_keys
     prepare_ui_toggle
     ensure_config_present
+    # Force carputer-ui to rebuild from apps/carputer-ui so we never ship a stale cached UI binary
+    log "Cleaning carputer-ui package to avoid stale cache"
+    run_make carputer-ui-dirclean
     log "Starting Buildroot build with ${JOBS} jobs"
     run_make all
     ;;

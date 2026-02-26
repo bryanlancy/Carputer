@@ -10,9 +10,61 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 GENERATED_WIFI_CONF="${SCRIPT_DIR}/generated/wifi/wpa_supplicant.conf"
 GENERATED_DISABLE_UI="${SCRIPT_DIR}/generated/etc/carputer/ui.disabled"
+GENERATED_HOSTNAME="${SCRIPT_DIR}/generated/etc/hostname"
+GENERATED_AUTH_KEYS="${SCRIPT_DIR}/generated/ssh/authorized_keys"
+ENV_FILE="${REPO_ROOT}/.env"
 
 CARPUTER_UID=1000
 CARPUTER_GID=1000
+
+# When generated files are missing, create them from .env so the image always uses current credentials.
+# This ensures "make" from buildroot (without scripts/buildroot-build.sh) still gets WiFi, hostname, and SSH from .env.
+if [ -f "${ENV_FILE}" ]; then
+    # shellcheck source=/dev/null
+    . "${ENV_FILE}"
+
+    if [ ! -f "${GENERATED_WIFI_CONF}" ] && [ -n "${CARPUTER_WIFI_SSID:-}" ] && [ -n "${CARPUTER_WIFI_PSK:-}" ]; then
+        mkdir -p "$(dirname "${GENERATED_WIFI_CONF}")"
+        ssid_escaped="$(printf '%s' "${CARPUTER_WIFI_SSID}" | sed 's/"/\\"/g')"
+        psk_escaped="$(printf '%s' "${CARPUTER_WIFI_PSK}" | sed 's/"/\\"/g')"
+        cat > "${GENERATED_WIFI_CONF}" <<EOF
+ctrl_interface=/var/run/wpa_supplicant
+ap_scan=1
+
+network={
+    ssid="${ssid_escaped}"
+    psk="${psk_escaped}"
+    key_mgmt=WPA-PSK
+    priority=10
+}
+EOF
+        chmod 600 "${GENERATED_WIFI_CONF}"
+        echo "[post-build] Generated Wi-Fi config from .env (${GENERATED_WIFI_CONF})" >&2
+    fi
+
+    if [ ! -f "${GENERATED_HOSTNAME}" ] && [ -n "${CARPUTER_DEVICE_NAME:-}" ]; then
+        mkdir -p "$(dirname "${GENERATED_HOSTNAME}")"
+        printf '%s\n' "${CARPUTER_DEVICE_NAME}" > "${GENERATED_HOSTNAME}"
+        echo "[post-build] Generated hostname from .env (${CARPUTER_DEVICE_NAME})" >&2
+    fi
+
+    if [ ! -f "${GENERATED_AUTH_KEYS}" ] && [ -n "${CARPUTER_SSH_PUBLIC_KEY:-}" ]; then
+        mkdir -p "$(dirname "${GENERATED_AUTH_KEYS}")"
+        printf '%s\n' "${CARPUTER_SSH_PUBLIC_KEY}" > "${GENERATED_AUTH_KEYS}"
+        chmod 600 "${GENERATED_AUTH_KEYS}"
+        echo "[post-build] Generated SSH authorized_keys from .env" >&2
+    fi
+
+    if [ ! -f "${GENERATED_DISABLE_UI}" ]; then
+        case "${CARPUTER_ENABLE_UI:-1}" in
+            0|false|no|off)
+                mkdir -p "$(dirname "${GENERATED_DISABLE_UI}")"
+                printf '%s\n' "Set from .env (CARPUTER_ENABLE_UI=0)" > "${GENERATED_DISABLE_UI}"
+                echo "[post-build] Generated UI disable flag from .env" >&2
+                ;;
+        esac
+    fi
+fi
 
 # Ensure carputer user and group exist for autologin
 if ! grep -q '^carputer:' "${TARGET_DIR}/etc/group"; then
@@ -198,7 +250,6 @@ if [ -f "${WLAN0_FILE}" ]; then
     echo "[post-build] (wlan0 is now configured in main /etc/network/interfaces file)" >&2
 fi
 
-GENERATED_HOSTNAME="${SCRIPT_DIR}/generated/etc/hostname"
 if [ -f "${GENERATED_HOSTNAME}" ]; then
     install -D -m 0644 "${GENERATED_HOSTNAME}" "${TARGET_DIR}/etc/hostname"
     echo "[post-build] Installed hostname from generated configuration" >&2
@@ -216,7 +267,6 @@ else
     echo "[post-build] UI session enabled (no disable flag found)" >&2
 fi
 
-GENERATED_AUTH_KEYS="${SCRIPT_DIR}/generated/ssh/authorized_keys"
 SSHD_CONFIG="${TARGET_DIR}/etc/ssh/sshd_config"
 
 # Require SSH public key - fail build if not provided
@@ -264,9 +314,9 @@ if [ -x "${TARGET_DIR}/sbin/agetty" ]; then
     ln -sf /sbin/agetty "${TARGET_DIR}/sbin/getty"
 fi
 
-# Use 'once' instead of 'respawn' to prevent boot loops if UI has issues
-# This allows the system to boot even if the UI fails
-sed -i 's#^tty1::.*#tty1::once:/usr/bin/carputer-session#' "${TARGET_DIR}/etc/inittab"
+# Use respawn so when the UI (or session) exits, init restarts carputer-session and the UI again.
+# This prevents a blank screen; without it tty1 would have no process after the session exited.
+sed -i 's#^tty1::.*#tty1::respawn:/usr/bin/carputer-session#' "${TARGET_DIR}/etc/inittab"
 chmod 0755 "${TARGET_DIR}/usr/bin/carputer-session"
 chmod 0755 "${TARGET_DIR}/etc/init.d/rcS"
 
