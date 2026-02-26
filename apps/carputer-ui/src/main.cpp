@@ -3,6 +3,7 @@
 #include <QtGui/QBackingStore>
 #include <QtGui/QPainter>
 #include <QtGui/QFont>
+#include <QtGui/QFontDatabase>
 #include <QtGui/QScreen>
 #include <QDebug>
 #include <QTimer>
@@ -10,12 +11,39 @@
 #include <QResizeEvent>
 #include <QExposeEvent>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
+#include <QDir>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDateTime>
 #include <unistd.h>
 #include <sys/types.h>
+
+// Boot log: always append to a file on the device for SSH debugging (path from env or default).
+static void bootLog(const char* location, const char* message, int w = -1, int h = -1, bool isExposed = false) {
+    QString path = qEnvironmentVariable("CARPUTER_UI_LOG");
+    if (path.isEmpty()) {
+        QString home = qEnvironmentVariable("HOME", "/home/carputer");
+        path = home + "/.local/share/carputer/logs/carputer-ui.log";
+    }
+    QDir::root().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        return;
+    QTextStream out(&f);
+    QString line = QString("[%1] [carputer-ui] %2: %3")
+        .arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate))
+        .arg(location)
+        .arg(message);
+    if (w >= 0 && h >= 0)
+        line += QString(" (window %1x%2)").arg(w).arg(h);
+    if (isExposed)
+        line += " [exposed]";
+    out << line << "\n";
+    f.close();
+    fprintf(stderr, "[carputer-ui] %s: %s\n", location, message);
+}
 
 // #region agent log
 static void debugLog(const QString& location, const QString& message, const QJsonObject& data = QJsonObject(), const QString& hypothesisId = "") {
@@ -55,11 +83,8 @@ class HelloWorldWindow : public QWindow
 public:
     HelloWorldWindow() : QWindow(), m_backingStore(nullptr)
     {
-        // #region agent log
-        debugLog("HelloWorldWindow::HelloWorldWindow", "Window constructor called", QJsonObject{{"width", 800}, {"height", 480}}, "A");
-        // #endregion
         setTitle("Carputer UI");
-        resize(800, 480);
+        // Size will be set from primary screen in main(); avoid fixed size to prevent overflow
         m_backingStore = new QBackingStore(this);
         // #region agent log
         debugLog("HelloWorldWindow::HelloWorldWindow", "Window resized, backing store created", QJsonObject{{"width", width()}, {"height", height()}, {"isExposed", isExposed()}, {"isVisible", isVisible()}}, "A");
@@ -118,13 +143,9 @@ protected:
 
     void render()
     {
-        // #region agent log
-        debugLog("HelloWorldWindow::render", "render() called", QJsonObject{{"isExposed", isExposed()}, {"width", width()}, {"height", height()}}, "C");
-        // #endregion
+        bootLog("render", "render() called", width(), height(), isExposed());
         if (!isExposed()) {
-            // #region agent log
-            debugLog("HelloWorldWindow::render", "Window not exposed, returning early", QJsonObject(), "C");
-            // #endregion
+            bootLog("render", "SKIP (not exposed)", width(), height(), false);
             return;
         }
 
@@ -149,104 +170,90 @@ protected:
 
         // Fill with black
         painter.fillRect(rect, Qt::black);
-        // #region agent log
-        debugLog("HelloWorldWindow::render", "Background filled", QJsonObject{{"rect", QString("%1,%2 %3x%4").arg(rect.x()).arg(rect.y()).arg(rect.width()).arg(rect.height())}}, "C");
-        // #endregion
 
-        // Set up font
+        // "Hello World" in the center – load DejaVu from path so it renders as glyphs (not tofu) on linuxfb
         QFont font;
-        font.setPixelSize(72);
+        const QStringList fontPaths = {
+            QStringLiteral("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+            QStringLiteral("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
+        };
+        for (const QString &path : fontPaths) {
+            if (!QFile::exists(path))
+                continue;
+            const int fontId = QFontDatabase::addApplicationFont(path);
+            if (fontId >= 0) {
+                const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
+                if (!families.isEmpty()) {
+                    font.setFamily(families.constFirst());
+                    break;
+                }
+            }
+        }
+        if (font.family().isEmpty())
+            font.setFamily(QStringLiteral("DejaVu Sans"));
+        font.setPixelSize(qMax(24, qMin(width(), height()) / 15));
         font.setBold(true);
         painter.setFont(font);
         painter.setPen(Qt::white);
+        painter.drawText(rect, Qt::AlignCenter, QStringLiteral("Hello World"));
 
-        // Draw "Hello World" centered
-        painter.drawText(rect, Qt::AlignCenter, "Hello World");
-        // #region agent log
-        debugLog("HelloWorldWindow::render", "Text drawn", QJsonObject{{"text", "Hello World"}}, "C");
-        // #endregion
+        // Four white squares in the corners – compensate for screen aspect so they look square on screen
+        const int margin = qMax(8, qMin(width(), height()) / 40);
+        const int baseSize = qMax(40, (qMin(width(), height()) - 2 * margin) / 5);
+        // On widescreen, pixels are typically wider than tall; use height as reference so box has correct aspect
+        const int boxW = (width() >= height()) ? qMax(1, baseSize * height() / width()) : baseSize;
+        const int boxH = (height() >= width()) ? qMax(1, baseSize * width() / height()) : baseSize;
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(Qt::white);
+        painter.drawRect(margin, margin, boxW, boxH);                                                                               // top-left
+        painter.drawRect(width() - margin - boxW, margin, boxW, boxH);                                                             // top-right
+        painter.drawRect(margin, height() - margin - boxH, boxW, boxH);                                                            // bottom-left
+        painter.drawRect(width() - margin - boxW, height() - margin - boxH, boxW, boxH);                                            // bottom-right
 
         painter.end();
         m_backingStore->endPaint();
         m_backingStore->flush(rect);
-        // #region agent log
-        debugLog("HelloWorldWindow::render", "Backing store flushed", QJsonObject(), "C");
-        // #endregion
-
-        qDebug() << "Rendered Hello World to window" << rect;
+        bootLog("render", "drew Hello World + 4 white squares", width(), height(), true);
     }
 };
 
 int main(int argc, char *argv[])
 {
-    // #region agent log
-    debugLog("main", "Application starting", QJsonObject{{"argc", argc}}, "A");
-    // #endregion
+    bootLog("main", "carputer-ui starting (Qt C++ build)");
     QGuiApplication app(argc, argv);
-    // #region agent log
-    debugLog("main", "QGuiApplication created", QJsonObject{{"platformName", app.platformName()}}, "A");
-    // #endregion
+    bootLog("main", "QGuiApplication created", -1, -1, false);
     app.setOrganizationName("Carputer");
     app.setApplicationName("Carputer UI");
-
-    // Enable Qt logging
     qSetMessagePattern("[%{type}] %{message}");
 
-    qDebug() << "Creating Hello World window";
-    qDebug() << "Platform:" << app.platformName();
-
-    // Get screen info
     QScreen *screen = app.primaryScreen();
-    // #region agent log
-    debugLog("main", "Screen detection", QJsonObject{{"screenExists", screen != nullptr}}, "A");
-    // #endregion
     if (screen) {
-        // #region agent log
-        debugLog("main", "Screen info", QJsonObject{{"geometry", QString("%1,%2 %3x%4").arg(screen->geometry().x()).arg(screen->geometry().y()).arg(screen->geometry().width()).arg(screen->geometry().height())}, {"size", QString("%1x%2").arg(screen->size().width()).arg(screen->size().height())}}, "A");
-        // #endregion
-        qDebug() << "Screen geometry:" << screen->geometry();
-        qDebug() << "Screen size:" << screen->size();
+        bootLog("main", qPrintable(QString("primaryScreen geometry %1x%2").arg(screen->geometry().width()).arg(screen->geometry().height())));
+    } else {
+        bootLog("main", "WARNING: primaryScreen is null");
     }
 
-    // Create window
     HelloWorldWindow window;
-    // #region agent log
-    debugLog("main", "Window created", QJsonObject{{"geometry", QString("%1,%2 %3x%4").arg(window.geometry().x()).arg(window.geometry().y()).arg(window.geometry().width()).arg(window.geometry().height())}}, "A");
-    // #endregion
-
-    // Make fullscreen
     if (screen) {
         window.setGeometry(screen->geometry());
-        // #region agent log
-        debugLog("main", "Window geometry set to screen", QJsonObject{{"geometry", QString("%1,%2 %3x%4").arg(window.geometry().x()).arg(window.geometry().y()).arg(window.geometry().width()).arg(window.geometry().height())}}, "A");
-        // #endregion
+        bootLog("main", "window.setGeometry(screen)", screen->geometry().width(), screen->geometry().height(), false);
     }
     window.showFullScreen();
-    // #region agent log
-    debugLog("main", "showFullScreen() called", QJsonObject{{"isVisible", window.isVisible()}, {"isExposed", window.isExposed()}, {"geometry", QString("%1,%2 %3x%4").arg(window.geometry().x()).arg(window.geometry().y()).arg(window.geometry().width()).arg(window.geometry().height())}}, "A");
-    // #endregion
+    bootLog("main", "showFullScreen() done", window.width(), window.height(), window.isExposed());
 
-    qDebug() << "Window created, geometry:" << window.geometry();
-    qDebug() << "Window visible:" << window.isVisible();
-    qDebug() << "Window exposed:" << window.isExposed();
-    qDebug() << "Application starting event loop";
-
-    // Force an initial render attempt after a short delay
-    QTimer::singleShot(100, [&window]() {
-        // #region agent log
-        debugLog("main", "Delayed render attempt", QJsonObject{{"isVisible", window.isVisible()}, {"isExposed", window.isExposed()}, {"width", window.width()}, {"height", window.height()}}, "A");
-        // #endregion
-        if (window.isExposed()) {
-            // #region agent log
-            debugLog("main", "Window exposed in delayed callback, requesting update", QJsonObject(), "A");
-            // #endregion
-            window.requestUpdate();
-        }
+    // Force linuxfb to show our window: request update immediately and again after a short delay
+    window.requestUpdate();
+    QGuiApplication::processEvents();
+    QTimer::singleShot(50, [&window]() {
+        window.requestUpdate();
+        QGuiApplication::processEvents();
+    });
+    QTimer::singleShot(200, [&window]() {
+        window.requestUpdate();
+        QGuiApplication::processEvents();
     });
 
-    // #region agent log
-    debugLog("main", "Entering event loop", QJsonObject(), "A");
-    // #endregion
+    bootLog("main", "entering event loop");
     return app.exec();
 }
 
