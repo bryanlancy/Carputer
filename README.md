@@ -61,7 +61,9 @@ For faster iteration, you can deploy the root filesystem over NFS:
 
 ## Configuration
 
-The build process reads from `.env` to customize the image:
+The image is customized from `.env` in two ways: (1) when you run `./scripts/buildroot-build.sh build`, the script generates WiFi, hostname, SSH keys, and cmdline from `.env` before building; (2) when you run `make` from the `buildroot/` directory, the post-build script reads `.env` and generates any missing config so the image still gets your current credentials. **After changing `.env` (e.g. new Wi‑Fi or hostname), rebuild the image and reflash or redeploy.**
+
+Variables used:
 
 - `CARPUTER_WIFI_SSID` - Wi-Fi network name
 - `CARPUTER_WIFI_PSK` - Wi-Fi password
@@ -70,6 +72,8 @@ The build process reads from `.env` to customize the image:
 - `CARPUTER_SSH_PUBLIC_KEY` - SSH public key for root access
 - `CARPUTER_USE_NFS` - Enable NFS-root filesystem (0 or 1)
 - `CARPUTER_ENABLE_UI` - Enable UI components (0 or 1)
+
+For boot and UI troubleshooting (e.g. wrong display, checking what ran), see [Boot and UI debugging](docs/BOOT_DEBUGGING.md). Key logs: `/boot/carputer-session.log` and `~/.local/share/carputer/logs/carputer-ui.log` on the device.
 
 ## Fleet Command & Control Server
 
